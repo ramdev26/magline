@@ -50,17 +50,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [loadSession]);
 
   const login = async (email: string, password: string) => {
-    const res = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ email, password }),
-    });
-    const data = await res.json();
-    if (!res.ok) return (data.error as string) ?? "Login failed";
-    setStoredToken(data.token);
-    setUser(data.user);
-    return null;
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email, password }),
+      });
+
+      let data: { error?: string; token?: string; user?: AuthUser } = {};
+      const text = await res.text();
+      if (text) {
+        try {
+          data = JSON.parse(text);
+        } catch {
+          return "Server error. Please try again.";
+        }
+      }
+
+      if (!res.ok) return data.error ?? "Login failed";
+      if (!data.token || !data.user) return "Invalid server response.";
+      setStoredToken(data.token);
+      setUser(data.user);
+      return null;
+    } catch {
+      return "Could not reach the server. Check your connection and try again.";
+    }
   };
 
   const logout = async () => {

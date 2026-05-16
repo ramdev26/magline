@@ -18,9 +18,12 @@ const Login = () => {
     e.preventDefault();
     setError(null);
     setSubmitting(true);
-    const err = await login(email.trim(), password);
-    if (err) setError(err);
-    setSubmitting(false);
+    try {
+      const err = await login(email.trim(), password);
+      if (err) setError(err);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
