@@ -4,6 +4,7 @@ import { formatLKR } from '../utils/currency';
 import { emptyInquiryForm, MODE_OF_INQUIRY, ONGOING_TENDER } from '../constants/inquiry';
 import { Plus, Search, X, Pencil, Download, Upload } from 'lucide-react';
 import { exportInquiriesToExcel, parseInquiriesFromExcel } from '../utils/excel';
+import { apiFetch } from '../lib/api';
 import { motion, AnimatePresence } from 'motion/react';
 
 const inputClass =
@@ -27,9 +28,9 @@ const Orders = () => {
   const loadData = async () => {
     setLoading(true);
     const [inqRes, custRes, salesRes] = await Promise.all([
-      fetch('/api/inquiries'),
-      fetch('/api/customers'),
-      fetch('/api/sales'),
+      apiFetch('/api/inquiries'),
+      apiFetch('/api/customers'),
+      apiFetch('/api/sales'),
     ]);
     setInquiries(await inqRes.json());
     setCustomers(await custRes.json());
@@ -120,9 +121,8 @@ const Orders = () => {
     const url = editingId ? `/api/inquiries/${editingId}` : '/api/inquiries';
     const method = editingId ? 'PUT' : 'POST';
 
-    const res = await fetch(url, {
+    const res = await apiFetch(url, {
       method,
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
 
@@ -154,9 +154,8 @@ const Orders = () => {
         return;
       }
 
-      const res = await fetch('/api/inquiries/import', {
+      const res = await apiFetch('/api/inquiries/import', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ inquiries: payloads }),
       });
       const result = await res.json();

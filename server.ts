@@ -3,14 +3,24 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import type { ApiRequest, ApiResponse } from "./api/types";
 import { bulkImportInquiries, dashboard, customers, inquiries, sales, updateInquiry } from "./api/lib/handlers";
+import { login, logout, me, listUsers, createUser, updateUserHandler } from "./api/lib/auth-handlers";
+import { protect } from "./api/lib/protect";
 import { prisma } from "./api/lib/prisma";
+
+function toApiReq(req: express.Request): ApiRequest {
+  return {
+    method: req.method,
+    body: req.body as Record<string, unknown>,
+    headers: req.headers as ApiRequest["headers"],
+  };
+}
 
 function wrap(
   handler: (req: ApiRequest, res: ApiResponse) => Promise<void>
 ) {
   return async (req: express.Request, res: express.Response) => {
     try {
-      await handler(req as ApiRequest, res as unknown as ApiResponse);
+      await handler(toApiReq(req), res as unknown as ApiResponse);
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: "Internal server error" });
@@ -32,24 +42,48 @@ async function startServer() {
       res.json({ status: "ok", database: "pending" });
     }
   });
-  app.get("/api/dashboard", wrap(dashboard));
-  app.get("/api/customers", wrap(customers));
-  app.post("/api/customers", wrap(customers));
-  app.get("/api/inquiries", wrap(inquiries));
-  app.post("/api/inquiries", wrap(inquiries));
-  app.post("/api/inquiries/import", wrap(bulkImportInquiries));
-  app.put("/api/inquiries/:id", async (req, res) => {
+
+  app.post("/api/auth/login", wrap(login));
+  app.post("/api/auth/logout", wrap(logout));
+  app.get("/api/auth/me", wrap(me));
+
+  app.get("/api/users", wrap(listUsers));
+  app.post("/api/users", wrap(createUser));
+  app.patch("/api/users/:id", async (req, res) => {
     try {
-      await updateInquiry(req as ApiRequest, res as unknown as ApiResponse, req.params.id);
+      await updateUserHandler(req.params.id)(toApiReq(req), res as unknown as ApiResponse);
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: "Internal server error" });
     }
   });
-  app.get("/api/orders", wrap(inquiries));
-  app.post("/api/orders", wrap(inquiries));
-  app.get("/api/sales", wrap(sales));
-  app.post("/api/sales", wrap(sales));
+  app.put("/api/users/:id", async (req, res) => {
+    try {
+      await updateUserHandler(req.params.id)(toApiReq(req), res as unknown as ApiResponse);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.get("/api/dashboard", wrap(protect(dashboard)));
+  app.get("/api/customers", wrap(protect(customers)));
+  app.post("/api/customers", wrap(protect(customers)));
+  app.get("/api/inquiries", wrap(protect(inquiries)));
+  app.post("/api/inquiries", wrap(protect(inquiries)));
+  app.post("/api/inquiries/import", wrap(protect(bulkImportInquiries)));
+  app.put("/api/inquiries/:id", async (req, res) => {
+    try {
+      await protect(async (r, re) => updateInquiry(r, re, req.params.id))(toApiReq(req), res as unknown as ApiResponse);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+  app.get("/api/orders", wrap(protect(inquiries)));
+  app.post("/api/orders", wrap(protect(inquiries)));
+  app.get("/api/sales", wrap(protect(sales)));
+  app.post("/api/sales", wrap(protect(sales)));
 
   if (process.env.NODE_ENV === "production") {
     const distPath = path.join(process.cwd(), "dist");

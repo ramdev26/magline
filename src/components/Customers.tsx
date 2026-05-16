@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Customer } from '../types';
 import { UserPlus, Search, MoreHorizontal, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { apiFetch } from '../lib/api';
 
 const emptyCustomer = {
   name: '',
@@ -22,7 +23,7 @@ const Customers = () => {
 
   const loadCustomers = () => {
     setLoading(true);
-    fetch('/api/customers')
+    apiFetch('/api/customers')
       .then(res => res.json())
       .then(data => {
         setCustomers(data);
@@ -51,9 +52,8 @@ const Customers = () => {
     e.preventDefault();
     setSaving(true);
     setError(null);
-    const res = await fetch('/api/customers', {
+    const res = await apiFetch('/api/customers', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(form),
     });
     if (res.ok) {

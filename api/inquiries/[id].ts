@@ -1,5 +1,6 @@
 import type { ApiRequest, ApiResponse } from "../types";
 import { updateInquiry } from "../lib/handlers.js";
+import { withAuth } from "../lib/with-auth.js";
 
 export default async function handler(req: ApiRequest, res: ApiResponse) {
   const id = (req as ApiRequest & { query?: { id?: string } }).query?.id;
@@ -8,7 +9,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   }
 
   try {
-    return await updateInquiry(req, res, id);
+    return await withAuth(async (r, re) => updateInquiry(r, re, id))(req, res);
   } catch (error) {
     console.error("update inquiry error:", error);
     res.status(500).json({ error: "Failed to update inquiry" });

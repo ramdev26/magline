@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { DashboardStats } from '../types';
 import { formatLKR } from '../utils/currency';
+import { apiFetch } from '../lib/api';
 import { TrendingUp, Users, ShoppingBag, Package } from 'lucide-react';
 
 const Dashboard = () => {
@@ -10,7 +11,7 @@ const Dashboard = () => {
   const [error, setError] = useState<string | null>(null);
 
   const loadStats = () => {
-    fetch('/api/dashboard')
+    apiFetch('/api/dashboard')
       .then(res => {
         if (!res.ok) throw new Error('Failed to load dashboard');
         return res.json();

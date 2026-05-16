@@ -3,6 +3,7 @@ import { SalesPerson, SalesManager } from '../types';
 import { formatLKR } from '../utils/currency';
 import { Briefcase, User, Award, ShieldCheck, ShoppingBag, UserPlus, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { apiFetch } from '../lib/api';
 
 const SalesTeam = () => {
   const [team, setTeam] = useState<{ persons: SalesPerson[]; managers: SalesManager[] } | null>(null);
@@ -12,7 +13,7 @@ const SalesTeam = () => {
   const [saving, setSaving] = useState(false);
 
   const loadTeam = () => {
-    fetch('/api/sales')
+    apiFetch('/api/sales')
       .then(res => res.json())
       .then(setTeam);
   };
@@ -24,9 +25,8 @@ const SalesTeam = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
-    const res = await fetch('/api/sales', {
+    const res = await apiFetch('/api/sales', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(
         addType === 'manager'
           ? { type: 'manager', name: form.name, department: form.department }
