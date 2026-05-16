@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Inquiry, Customer, SalesPerson } from '../types';
 import { formatLKR } from '../utils/currency';
-import { formatInquiryContact } from '../utils/contact';
 import { emptyInquiryForm, MODE_OF_INQUIRY, ONGOING_TENDER } from '../constants/inquiry';
 import { Plus, Search, X, Pencil, Download, Upload } from 'lucide-react';
 import { exportInquiriesToExcel, parseInquiriesFromExcel } from '../utils/excel';
@@ -50,6 +49,7 @@ const Orders = () => {
       (row.projectName ?? '').toLowerCase().includes(q) ||
       (row.quotationNo ?? '').toLowerCase().includes(q) ||
       (row.poNo ?? '').toLowerCase().includes(q) ||
+      (row.contactDetails ?? '').toLowerCase().includes(q) ||
       (row.contactPhone ?? '').toLowerCase().includes(q) ||
       (row.contactEmail ?? '').toLowerCase().includes(q)
     );
@@ -179,24 +179,31 @@ const Orders = () => {
     }
   };
 
-  const columns = [
+  const contactColumns = [
+    { key: 'contactDetails', label: 'Contact Person', render: (r: Inquiry) => r.contactDetails ?? '—' },
+    { key: 'contactPhone', label: 'Phone', render: (r: Inquiry) => r.contactPhone ?? '—' },
+    {
+      key: 'contactEmail',
+      label: 'Email',
+      render: (r: Inquiry) =>
+        r.contactEmail ? (
+          <a href={`mailto:${r.contactEmail}`} className="text-blue-600 hover:underline" title={r.contactEmail}>
+            {r.contactEmail}
+          </a>
+        ) : (
+          '—'
+        ),
+    },
+  ] as const;
+
+  const columnsBeforeContact = [
     { key: 'serialNo', label: 'Serial No', render: (r: Inquiry) => r.serialNo },
     { key: 'inquiryReceivedDate', label: 'Inquiry Received Date', render: (r: Inquiry) => r.inquiryReceivedDate ?? '—' },
     { key: 'modeOfInquiry', label: 'Mode of Inquiry', render: (r: Inquiry) => r.modeOfInquiry ?? '—' },
     { key: 'customerName', label: 'Customer Name', render: (r: Inquiry) => r.customerName },
-    {
-      key: 'contactDetails',
-      label: 'Contact Details',
-      render: (r: Inquiry) => {
-        const text = formatInquiryContact(r);
-        if (!text) return '—';
-        return (
-          <span className="whitespace-nowrap" title={text}>
-            {text}
-          </span>
-        );
-      },
-    },
+  ];
+
+  const columnsAfterContact = [
     { key: 'projectName', label: 'Project Name', render: (r: Inquiry) => r.projectName ?? '—' },
     { key: 'document', label: 'Document', render: (r: Inquiry) => r.document ?? '—' },
     { key: 'salesPersonName', label: 'Sales Person', render: (r: Inquiry) => r.salesPersonName ?? '—' },
@@ -213,6 +220,8 @@ const Orders = () => {
     { key: 'awardedPrice', label: 'Awarded Price (LKR)', render: (r: Inquiry) => r.awardedPrice != null ? formatLKR(r.awardedPrice) : '—' },
     { key: 'remarks', label: 'Remarks', render: (r: Inquiry) => r.remarks ?? '—' },
   ];
+
+  const columns = [...columnsBeforeContact, ...contactColumns, ...columnsAfterContact];
 
   return (
     <div className="flex flex-col min-h-screen bg-slate-50">
@@ -281,9 +290,43 @@ const Orders = () => {
             <table className="w-max min-w-full text-left text-xs">
               <thead className="bg-slate-900 text-white sticky top-0 z-10">
                 <tr>
-                  <th className="px-3 py-3 font-semibold whitespace-nowrap sticky left-0 bg-slate-900 z-20">Actions</th>
-                  {columns.map((col) => (
-                    <th key={col.key} className="px-3 py-3 font-semibold whitespace-nowrap border-l border-slate-700">
+                  <th
+                    rowSpan={2}
+                    className="px-3 py-3 font-semibold whitespace-nowrap sticky left-0 bg-slate-900 z-20 align-middle"
+                  >
+                    Actions
+                  </th>
+                  {columnsBeforeContact.map((col) => (
+                    <th
+                      key={col.key}
+                      rowSpan={2}
+                      className="px-3 py-3 font-semibold whitespace-nowrap border-l border-slate-700 align-middle"
+                    >
+                      {col.label}
+                    </th>
+                  ))}
+                  <th
+                    colSpan={contactColumns.length}
+                    className="px-3 py-2 font-semibold whitespace-nowrap border-l border-slate-700 text-center bg-slate-800"
+                  >
+                    Contact Details
+                  </th>
+                  {columnsAfterContact.map((col) => (
+                    <th
+                      key={col.key}
+                      rowSpan={2}
+                      className="px-3 py-3 font-semibold whitespace-nowrap border-l border-slate-700 align-middle"
+                    >
+                      {col.label}
+                    </th>
+                  ))}
+                </tr>
+                <tr>
+                  {contactColumns.map((col) => (
+                    <th
+                      key={col.key}
+                      className="px-3 py-2 font-semibold whitespace-nowrap border-l border-slate-700 bg-slate-800 text-slate-200"
+                    >
                       {col.label}
                     </th>
                   ))}
@@ -405,34 +448,39 @@ const Orders = () => {
                       <label className={labelClass}>Customer name *</label>
                       <input required className={inputClass} value={form.customerName} onChange={(e) => setForm({ ...form, customerName: e.target.value })} />
                     </div>
-                    <motion.div>
-                      <label className={labelClass}>Contact person</label>
-                      <input
-                        className={inputClass}
-                        placeholder="Name or role"
-                        value={form.contactDetails ?? ''}
-                        onChange={(e) => setForm({ ...form, contactDetails: e.target.value })}
-                      />
-                    </motion.div>
-                    <div>
-                      <label className={labelClass}>Phone number</label>
-                      <input
-                        type="tel"
-                        className={inputClass}
-                        placeholder="+94 77 123 4567"
-                        value={form.contactPhone ?? ''}
-                        onChange={(e) => setForm({ ...form, contactPhone: e.target.value })}
-                      />
-                    </div>
-                    <div>
-                      <label className={labelClass}>Email address</label>
-                      <input
-                        type="email"
-                        className={inputClass}
-                        placeholder="name@company.com"
-                        value={form.contactEmail ?? ''}
-                        onChange={(e) => setForm({ ...form, contactEmail: e.target.value })}
-                      />
+                    <div className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50/80 p-4">
+                      <p className="text-xs font-bold text-slate-800 mb-3">Contact details</p>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                          <label className={labelClass}>Contact person</label>
+                          <input
+                            className={inputClass}
+                            placeholder="Name"
+                            value={form.contactDetails ?? ''}
+                            onChange={(e) => setForm({ ...form, contactDetails: e.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <label className={labelClass}>Phone number</label>
+                          <input
+                            type="tel"
+                            className={inputClass}
+                            placeholder="+94 77 123 4567"
+                            value={form.contactPhone ?? ''}
+                            onChange={(e) => setForm({ ...form, contactPhone: e.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <label className={labelClass}>Email address</label>
+                          <input
+                            type="email"
+                            className={inputClass}
+                            placeholder="name@company.com"
+                            value={form.contactEmail ?? ''}
+                            onChange={(e) => setForm({ ...form, contactEmail: e.target.value })}
+                          />
+                        </div>
+                      </div>
                     </div>
                     <div>
                       <label className={labelClass}>Project name</label>
