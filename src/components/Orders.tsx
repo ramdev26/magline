@@ -1,8 +1,26 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Inquiry, Customer, SalesPerson } from '../types';
 import { formatLKR } from '../utils/currency';
 import { emptyInquiryForm, MODE_OF_INQUIRY, ONGOING_TENDER } from '../constants/inquiry';
-import { Plus, Search, X, Pencil, Download, Upload } from 'lucide-react';
+import {
+  Plus,
+  Search,
+  X,
+  Pencil,
+  Download,
+  Upload,
+  LayoutGrid,
+  Table2,
+  ChevronDown,
+  ChevronUp,
+  Building2,
+  FileText,
+  Phone,
+  Mail,
+  User,
+  Calendar,
+  Filter,
+} from 'lucide-react';
 import { exportInquiriesToExcel, parseInquiriesFromExcel } from '../utils/excel';
 import { apiFetch } from '../lib/api';
 import { motion, AnimatePresence } from 'motion/react';
@@ -12,12 +30,45 @@ const inputClass =
 
 const labelClass = 'block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1';
 
+const categoryStyle: Record<string, string> = {
+  LV: 'bg-blue-100 text-blue-800 border-blue-200',
+  CMS: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+  MEP: 'bg-amber-100 text-amber-800 border-amber-200',
+};
+
+function formatDate(value: string | null) {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function inquiryStatus(row: Inquiry) {
+  if (row.poNo) return { label: 'PO received', className: 'bg-green-100 text-green-800 border-green-200' };
+  if (row.quotationSubmittedDate) return { label: 'Quoted', className: 'bg-sky-100 text-sky-800 border-sky-200' };
+  if (row.quotationNo) return { label: 'In quotation', className: 'bg-indigo-100 text-indigo-800 border-indigo-200' };
+  return { label: 'New inquiry', className: 'bg-slate-100 text-slate-700 border-slate-200' };
+}
+
+function DetailItem({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">{label}</p>
+      <p className="text-sm text-slate-800 break-words">{value || '—'}</p>
+    </div>
+  );
+}
+
 const Orders = () => {
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [salesPersons, setSalesPersons] = useState<SalesPerson[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -42,19 +93,40 @@ const Orders = () => {
     loadData();
   }, []);
 
-  const filtered = inquiries.filter((row) => {
+  const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    return (
-      String(row.serialNo).includes(q) ||
-      row.customerName.toLowerCase().includes(q) ||
-      (row.projectName ?? '').toLowerCase().includes(q) ||
-      (row.quotationNo ?? '').toLowerCase().includes(q) ||
-      (row.poNo ?? '').toLowerCase().includes(q) ||
-      (row.contactDetails ?? '').toLowerCase().includes(q) ||
-      (row.contactPhone ?? '').toLowerCase().includes(q) ||
-      (row.contactEmail ?? '').toLowerCase().includes(q)
-    );
-  });
+    return inquiries.filter((row) => {
+      const matchesSearch =
+        !q ||
+        String(row.serialNo).includes(q) ||
+        row.customerName.toLowerCase().includes(q) ||
+        (row.projectName ?? '').toLowerCase().includes(q) ||
+        (row.quotationNo ?? '').toLowerCase().includes(q) ||
+        (row.poNo ?? '').toLowerCase().includes(q) ||
+        (row.contactDetails ?? '').toLowerCase().includes(q) ||
+        (row.contactPhone ?? '').toLowerCase().includes(q) ||
+        (row.contactEmail ?? '').toLowerCase().includes(q);
+
+      const matchesCategory = categoryFilter === 'all' || row.category === categoryFilter;
+
+      let matchesStatus = true;
+      if (statusFilter === 'ongoing') matchesStatus = row.ongoingTender === 'Ongoing';
+      else if (statusFilter === 'tender') matchesStatus = row.ongoingTender === 'Tender';
+      else if (statusFilter === 'quoted') matchesStatus = !!row.quotationNo && !row.poNo;
+      else if (statusFilter === 'po') matchesStatus = !!row.poNo;
+
+      return matchesSearch && matchesCategory && matchesStatus;
+    });
+  }, [inquiries, search, categoryFilter, statusFilter]);
+
+  const stats = useMemo(() => {
+    const total = inquiries.length;
+    const ongoing = inquiries.filter((r) => r.ongoingTender === 'Ongoing').length;
+    const tender = inquiries.filter((r) => r.ongoingTender === 'Tender').length;
+    const withPo = inquiries.filter((r) => r.poNo).length;
+    const totalQuoted = inquiries.reduce((sum, r) => sum + (r.quotationAmount ?? 0), 0);
+    return { total, ongoing, tender, withPo, totalQuoted };
+  }, [inquiries]);
 
   const openCreate = () => {
     setEditingId(null);
@@ -166,9 +238,7 @@ const Orders = () => {
       }
 
       const skipNote = skipped.length ? ` Skipped ${skipped.length} empty row(s).` : '';
-      const errNote = result.errors?.length
-        ? ` ${result.errors.length} row(s) had errors.`
-        : '';
+      const errNote = result.errors?.length ? ` ${result.errors.length} row(s) had errors.` : '';
       setImportMessage(`Imported ${result.created} of ${result.total} records.${skipNote}${errNote}`);
       loadData();
     } catch {
@@ -178,203 +248,357 @@ const Orders = () => {
     }
   };
 
-  const contactColumns = [
-    { key: 'contactDetails', label: 'Contact Person', render: (r: Inquiry) => r.contactDetails ?? '—' },
-    { key: 'contactPhone', label: 'Phone', render: (r: Inquiry) => r.contactPhone ?? '—' },
-    {
-      key: 'contactEmail',
-      label: 'Email',
-      render: (r: Inquiry) =>
-        r.contactEmail ? (
-          <a href={`mailto:${r.contactEmail}`} className="text-blue-600 hover:underline" title={r.contactEmail}>
-            {r.contactEmail}
-          </a>
-        ) : (
-          '—'
-        ),
-    },
-  ] as const;
+  const toggleExpand = (id: string) => {
+    setExpandedId((prev) => (prev === id ? null : id));
+  };
 
-  const columnsBeforeContact = [
-    { key: 'serialNo', label: 'Serial No', render: (r: Inquiry) => r.serialNo },
-    { key: 'inquiryReceivedDate', label: 'Inquiry Received Date', render: (r: Inquiry) => r.inquiryReceivedDate ?? '—' },
-    { key: 'modeOfInquiry', label: 'Mode of Inquiry', render: (r: Inquiry) => r.modeOfInquiry ?? '—' },
-    { key: 'customerName', label: 'Customer Name', render: (r: Inquiry) => r.customerName },
-  ];
+  const renderInquiryCard = (row: Inquiry) => {
+    const status = inquiryStatus(row);
+    const expanded = expandedId === row.id;
+    const catClass = categoryStyle[row.category ?? 'LV'] ?? categoryStyle.LV;
 
-  const columnsAfterContact = [
-    { key: 'projectName', label: 'Project Name', render: (r: Inquiry) => r.projectName ?? '—' },
-    { key: 'document', label: 'Document', render: (r: Inquiry) => r.document ?? '—' },
-    { key: 'salesPersonName', label: 'Sales Person', render: (r: Inquiry) => r.salesPersonName ?? '—' },
-    { key: 'quotationRequiredDate', label: 'Quotation Required Date', render: (r: Inquiry) => r.quotationRequiredDate ?? '—' },
-    { key: 'engineer', label: 'Engineer', render: (r: Inquiry) => r.engineer ?? '—' },
-    { key: 'quotationNo', label: 'Quotation No', render: (r: Inquiry) => r.quotationNo ?? '—' },
-    { key: 'quotationAmount', label: 'Quotation Amount (LKR)', render: (r: Inquiry) => r.quotationAmount != null ? formatLKR(r.quotationAmount) : '—' },
-    { key: 'quotationSubmittedDate', label: 'Quotation Submitted Date', render: (r: Inquiry) => r.quotationSubmittedDate ?? '—' },
-    { key: 'ongoingTender', label: 'Ongoing/Tender', render: (r: Inquiry) => r.ongoingTender ?? '—' },
-    { key: 'jsbNo', label: 'JSB No', render: (r: Inquiry) => r.jsbNo ?? '—' },
-    { key: 'poNo', label: 'PO No', render: (r: Inquiry) => r.poNo ?? '—' },
-    { key: 'poReceivedDate', label: 'PO Received Date', render: (r: Inquiry) => r.poReceivedDate ?? '—' },
-    { key: 'awardedParty', label: 'Awarded Party', render: (r: Inquiry) => r.awardedParty ?? '—' },
-    { key: 'awardedPrice', label: 'Awarded Price (LKR)', render: (r: Inquiry) => r.awardedPrice != null ? formatLKR(r.awardedPrice) : '—' },
-    { key: 'remarks', label: 'Remarks', render: (r: Inquiry) => r.remarks ?? '—' },
-  ];
+    return (
+      <motion.article
+        key={row.id}
+        layout
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        className={`bg-white rounded-xl border transition-shadow ${
+          expanded ? 'border-blue-200 shadow-md ring-1 ring-blue-100' : 'border-slate-200 shadow-sm hover:shadow-md hover:border-slate-300'
+        }`}
+      >
+        <div className="p-4 sm:p-5">
+          <motion.div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2 min-w-0">
+              <span className="inline-flex items-center justify-center min-w-[2.5rem] h-8 px-2 rounded-lg bg-slate-900 text-white text-sm font-bold">
+                #{row.serialNo}
+              </span>
+              {row.category && (
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase tracking-wide ${catClass}`}>
+                  {row.category}
+                </span>
+              )}
+              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded border ${status.className}`}>
+                {status.label}
+              </span>
+              {row.ongoingTender && (
+                <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-violet-50 text-violet-700 border border-violet-100">
+                  {row.ongoingTender}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-xs text-slate-500 flex items-center gap-1">
+                <Calendar size={12} />
+                {formatDate(row.inquiryReceivedDate)}
+              </span>
+              <button
+                type="button"
+                onClick={() => openEdit(row)}
+                className="p-2 rounded-lg text-blue-600 hover:bg-blue-50 border border-transparent hover:border-blue-100"
+                title="Edit inquiry"
+              >
+                <Pencil size={16} />
+              </button>
+            </div>
+          </motion.div>
 
-  const columns = [...columnsBeforeContact, ...contactColumns, ...columnsAfterContact];
+          <div className="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-3">
+            <div className="min-w-0">
+              <p className="text-base font-semibold text-slate-900 truncate flex items-center gap-2">
+                <Building2 size={16} className="text-slate-400 shrink-0" />
+                {row.customerName}
+              </p>
+              {row.projectName && (
+                <p className="text-sm text-slate-600 mt-1 truncate pl-6">{row.projectName}</p>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-600 lg:justify-end lg:text-right">
+              {row.quotationNo && (
+                <span className="flex items-center gap-1 lg:justify-end">
+                  <FileText size={14} className="text-slate-400" />
+                  {row.quotationNo}
+                </span>
+              )}
+              {row.quotationAmount != null && (
+                <span className="font-semibold text-slate-900">{formatLKR(row.quotationAmount)}</span>
+              )}
+              {row.salesPersonName && (
+                <span className="flex items-center gap-1 lg:justify-end">
+                  <User size={14} className="text-slate-400" />
+                  {row.salesPersonName}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {(row.contactDetails || row.contactPhone || row.contactEmail) && !expanded && (
+            <div className="mt-3 flex flex-wrap gap-3 text-xs text-slate-500 pl-0.5">
+              {row.contactDetails && <span className="flex items-center gap-1"><User size={12} />{row.contactDetails}</span>}
+              {row.contactPhone && <span className="flex items-center gap-1"><Phone size={12} />{row.contactPhone}</span>}
+              {row.contactEmail && (
+                <a href={`mailto:${row.contactEmail}`} className="flex items-center gap-1 text-blue-600 hover:underline">
+                  <Mail size={12} />{row.contactEmail}
+                </a>
+              )}
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() => toggleExpand(row.id)}
+            className="mt-3 text-xs font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1"
+          >
+            {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            {expanded ? 'Hide details' : 'Show full details'}
+          </button>
+        </div>
+
+        <AnimatePresence>
+          {expanded && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="overflow-hidden border-t border-slate-100 bg-slate-50/80"
+            >
+              <div className="p-4 sm:p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <DetailItem label="Mode of inquiry" value={row.modeOfInquiry} />
+                <DetailItem label="Document" value={row.document} />
+                <DetailItem label="Contact person" value={row.contactDetails} />
+                <DetailItem label="Phone" value={row.contactPhone} />
+                <DetailItem label="Email" value={row.contactEmail} />
+                <DetailItem label="Engineer" value={row.engineer} />
+                <DetailItem label="Quotation required" value={formatDate(row.quotationRequiredDate)} />
+                <DetailItem label="Quotation submitted" value={formatDate(row.quotationSubmittedDate)} />
+                <DetailItem label="JSB no" value={row.jsbNo} />
+                <DetailItem label="PO no" value={row.poNo} />
+                <DetailItem label="PO received" value={formatDate(row.poReceivedDate)} />
+                <DetailItem label="Awarded party" value={row.awardedParty} />
+                <DetailItem
+                  label="Awarded price"
+                  value={row.awardedPrice != null ? formatLKR(row.awardedPrice) : null}
+                />
+                <div className="sm:col-span-2 lg:col-span-4">
+                  <DetailItem label="Remarks" value={row.remarks} />
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.article>
+    );
+  };
 
   return (
     <div className="flex flex-col min-h-screen bg-slate-50">
-      <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 shrink-0">
-        <motion.div initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} className="flex items-center gap-4">
-          <h2 className="text-lg font-semibold text-slate-900">Inquiry Register</h2>
-          <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wide">
-            {inquiries.length} records
-          </span>
-        </motion.div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={handleExport}
-            disabled={inquiries.length === 0}
-            className="px-3 py-2 border border-slate-200 bg-white rounded text-sm font-medium hover:bg-slate-50 flex items-center gap-2 disabled:opacity-50"
-          >
-            <Download size={16} /> Export Excel
-          </button>
-          <label className="px-3 py-2 border border-slate-200 bg-white rounded text-sm font-medium hover:bg-slate-50 flex items-center gap-2 cursor-pointer">
-            <Upload size={16} />
-            {importing ? 'Importing...' : 'Import Excel'}
-            <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleImportFile} disabled={importing} />
-          </label>
-          <button
-            onClick={openCreate}
-            className="px-4 py-2 bg-blue-600 text-white rounded text-sm font-medium shadow-sm hover:bg-blue-700 flex items-center gap-2"
-          >
-            <Plus size={16} /> New Inquiry
-          </button>
+      <header className="bg-white border-b border-slate-200 shrink-0">
+        <div className="px-6 lg:px-8 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-bold text-slate-900">Inquiry Register</h2>
+            <p className="text-sm text-slate-500 mt-0.5">Track inquiries, quotations, and purchase orders</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handleExport}
+              disabled={inquiries.length === 0}
+              className="px-3 py-2 border border-slate-200 bg-white rounded-lg text-sm font-medium hover:bg-slate-50 flex items-center gap-2 disabled:opacity-50"
+            >
+              <Download size={16} /> Export
+            </button>
+            <label className="px-3 py-2 border border-slate-200 bg-white rounded-lg text-sm font-medium hover:bg-slate-50 flex items-center gap-2 cursor-pointer">
+              <Upload size={16} />
+              {importing ? 'Importing...' : 'Import'}
+              <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleImportFile} disabled={importing} />
+            </label>
+            <button
+              type="button"
+              onClick={openCreate}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold shadow-sm hover:bg-blue-700 flex items-center gap-2"
+            >
+              <Plus size={16} /> New Inquiry
+            </button>
+          </div>
         </div>
       </header>
 
-      <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="p-6 flex-1 flex flex-col min-h-0">
+      <div className="p-6 lg:p-8 flex-1 flex flex-col gap-5 max-w-7xl w-full mx-auto">
         {importMessage && (
-          <motion.div
-            initial={{ opacity: 0, y: -4 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-4 text-sm px-4 py-3 rounded-lg border border-blue-200 bg-blue-50 text-blue-800"
-          >
+          <div className="text-sm px-4 py-3 rounded-lg border border-blue-200 bg-blue-50 text-blue-800">
             {importMessage}
-          </motion.div>
+          </div>
         )}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="mb-4 flex items-center gap-3 bg-white border border-slate-200 rounded-lg px-4 py-3"
-        >
-          <Search size={18} className="text-slate-400 shrink-0" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search serial, customer, project, quotation or PO..."
-            className="flex-1 bg-transparent border-none text-sm outline-none text-slate-700"
-          />
-        </motion.div>
 
-        <div className="bg-white border border-slate-200 rounded-lg shadow-sm flex-1 overflow-hidden flex flex-col">
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.1 }}
-            className="overflow-auto flex-1"
-          >
-            <table className="w-max min-w-full text-left text-xs">
-              <thead className="bg-slate-900 text-white sticky top-0 z-10">
-                <tr>
-                  <th
-                    rowSpan={2}
-                    className="px-3 py-3 font-semibold whitespace-nowrap sticky left-0 bg-slate-900 z-20 align-middle"
-                  >
-                    Actions
-                  </th>
-                  {columnsBeforeContact.map((col) => (
-                    <th
-                      key={col.key}
-                      rowSpan={2}
-                      className="px-3 py-3 font-semibold whitespace-nowrap border-l border-slate-700 align-middle"
-                    >
-                      {col.label}
-                    </th>
-                  ))}
-                  <th
-                    colSpan={contactColumns.length}
-                    className="px-3 py-2 font-semibold whitespace-nowrap border-l border-slate-700 text-center bg-slate-800"
-                  >
-                    Contact Details
-                  </th>
-                  {columnsAfterContact.map((col) => (
-                    <th
-                      key={col.key}
-                      rowSpan={2}
-                      className="px-3 py-3 font-semibold whitespace-nowrap border-l border-slate-700 align-middle"
-                    >
-                      {col.label}
-                    </th>
-                  ))}
-                </tr>
-                <tr>
-                  {contactColumns.map((col) => (
-                    <th
-                      key={col.key}
-                      className="px-3 py-2 font-semibold whitespace-nowrap border-l border-slate-700 bg-slate-800 text-slate-200"
-                    >
-                      {col.label}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-slate-700">
-                {loading ? (
-                  <tr>
-                    <td colSpan={columns.length + 1} className="px-6 py-16 text-center text-slate-400">
-                      Loading inquiry register...
-                    </td>
-                  </tr>
-                ) : filtered.length === 0 ? (
-                  <tr>
-                    <td colSpan={columns.length + 1} className="px-6 py-16 text-center text-slate-400">
-                      No inquiries yet. Click &quot;New Inquiry&quot; to add the first record.
-                    </td>
-                  </tr>
-                ) : (
-                  filtered.map((row, i) => (
-                    <motion.tr
-                      key={row.id}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ delay: Math.min(i * 0.02, 0.3) }}
-                      className="hover:bg-blue-50/50"
-                    >
-                      <td className="px-3 py-2 whitespace-nowrap sticky left-0 bg-white border-r border-slate-100">
-                        <button
-                          onClick={() => openEdit(row)}
-                          className="p-1.5 rounded-md text-blue-600 hover:bg-blue-100"
-                          title="Edit"
-                        >
-                          <Pencil size={14} />
-                        </button>
-                      </td>
-                      {columns.map((col) => (
-                        <td key={col.key} className="px-3 py-2 whitespace-nowrap max-w-[220px] truncate border-l border-slate-50">
-                          {col.render(row)}
-                        </td>
-                      ))}
-                    </motion.tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </motion.div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {[
+            { label: 'Total inquiries', value: stats.total, tone: 'bg-white border-slate-200' },
+            { label: 'Ongoing', value: stats.ongoing, tone: 'bg-blue-50 border-blue-100' },
+            { label: 'Tender', value: stats.tender, tone: 'bg-violet-50 border-violet-100' },
+            { label: 'PO received', value: stats.withPo, tone: 'bg-green-50 border-green-100' },
+          ].map((s) => (
+            <div key={s.label} className={`rounded-xl border p-4 ${s.tone}`}>
+              <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">{s.label}</p>
+              <p className="text-2xl font-bold text-slate-900 mt-1">{s.value}</p>
+            </div>
+          ))}
         </div>
-      </motion.div>
+
+        <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 shadow-sm">
+          <div className="flex flex-col lg:flex-row gap-3">
+            <div className="flex-1 flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+              <Search size={18} className="text-slate-400 shrink-0" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search customer, project, serial, quotation, PO, contact..."
+                className="flex-1 bg-transparent border-none text-sm outline-none text-slate-700 min-w-0"
+              />
+            </div>
+            <motion.div className="flex flex-wrap items-center gap-2">
+              <Filter size={16} className="text-slate-400 hidden sm:block" />
+              <select
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                className="text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white text-slate-700"
+              >
+                <option value="all">All categories</option>
+                <option value="LV">LV</option>
+                <option value="CMS">CMS</option>
+                <option value="MEP">MEP</option>
+              </select>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white text-slate-700"
+              >
+                <option value="all">All statuses</option>
+                <option value="ongoing">Ongoing only</option>
+                <option value="tender">Tender only</option>
+                <option value="quoted">Quoted (no PO)</option>
+                <option value="po">PO received</option>
+              </select>
+              <div className="flex rounded-lg border border-slate-200 overflow-hidden ml-auto">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('cards')}
+                  className={`px-3 py-2 text-sm flex items-center gap-1.5 ${
+                    viewMode === 'cards' ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  <LayoutGrid size={16} /> Cards
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('table')}
+                  className={`px-3 py-2 text-sm flex items-center gap-1.5 border-l border-slate-200 ${
+                    viewMode === 'table' ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  <Table2 size={16} /> Table
+                </button>
+              </div>
+            </motion.div>
+          </div>
+          <p className="text-xs text-slate-500">
+            Showing <span className="font-semibold text-slate-700">{filtered.length}</span> of {inquiries.length} records
+            {stats.totalQuoted > 0 && (
+              <> · Total quoted value <span className="font-semibold text-slate-700">{formatLKR(stats.totalQuoted)}</span></>
+            )}
+          </p>
+        </div>
+
+        {loading ? (
+          <motion.div className="flex flex-col items-center justify-center py-24 text-slate-400">
+            <div className="w-8 h-8 border-2 border-slate-300 border-t-blue-600 rounded-full animate-spin mb-3" />
+            <p className="text-sm">Loading inquiries...</p>
+          </motion.div>
+        ) : filtered.length === 0 ? (
+          <div className="bg-white border border-dashed border-slate-300 rounded-xl py-16 px-6 text-center">
+            <FileText size={40} className="mx-auto text-slate-300 mb-3" />
+            <p className="text-slate-600 font-medium">No inquiries found</p>
+            <p className="text-sm text-slate-400 mt-1">
+              {inquiries.length === 0
+                ? 'Create your first inquiry to get started.'
+                : 'Try adjusting your search or filters.'}
+            </p>
+            {inquiries.length === 0 && (
+              <button
+                type="button"
+                onClick={openCreate}
+                className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
+              >
+                <Plus size={16} className="inline mr-1" /> New Inquiry
+              </button>
+            )}
+          </div>
+        ) : viewMode === 'cards' ? (
+          <div className="space-y-3">{filtered.map(renderInquiryCard)}</div>
+        ) : (
+          <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
+                    <th className="px-4 py-3">#</th>
+                    <th className="px-4 py-3">Received</th>
+                    <th className="px-4 py-3">Customer</th>
+                    <th className="px-4 py-3">Project</th>
+                    <th className="px-4 py-3">Cat.</th>
+                    <th className="px-4 py-3">Contact</th>
+                    <th className="px-4 py-3">Quotation</th>
+                    <th className="px-4 py-3">Amount</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3 w-12" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filtered.map((row) => {
+                    const status = inquiryStatus(row);
+                    return (
+                      <tr key={row.id} className="hover:bg-slate-50/80">
+                        <td className="px-4 py-3 font-bold text-slate-900">{row.serialNo}</td>
+                        <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{formatDate(row.inquiryReceivedDate)}</td>
+                        <td className="px-4 py-3 font-medium text-slate-900 max-w-[160px] truncate">{row.customerName}</td>
+                        <td className="px-4 py-3 text-slate-600 max-w-[140px] truncate">{row.projectName ?? '—'}</td>
+                        <td className="px-4 py-3">
+                          {row.category && (
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${categoryStyle[row.category]}`}>
+                              {row.category}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-slate-600 max-w-[120px]">
+                          <div className="truncate">{row.contactDetails ?? row.contactPhone ?? '—'}</div>
+                        </td>
+                        <td className="px-4 py-3 text-slate-600">{row.quotationNo ?? '—'}</td>
+                        <td className="px-4 py-3 font-medium whitespace-nowrap">
+                          {row.quotationAmount != null ? formatLKR(row.quotationAmount) : '—'}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded border ${status.className}`}>
+                            {status.label}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <button
+                            type="button"
+                            onClick={() => openEdit(row)}
+                            className="p-1.5 rounded-md text-blue-600 hover:bg-blue-50"
+                          >
+                            <Pencil size={14} />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
 
       <AnimatePresence>
         {showModal && (
@@ -390,27 +614,23 @@ const Orders = () => {
               exit={{ scale: 0.96, opacity: 0 }}
               className="bg-white rounded-xl w-full max-w-4xl max-h-[92vh] overflow-hidden border border-slate-200 shadow-2xl flex flex-col"
             >
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="px-6 py-4 border-b border-slate-100 flex justify-between items-center shrink-0"
-              >
+              <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center shrink-0">
                 <h3 className="text-lg font-bold text-slate-900">
                   {editingId ? 'Edit Inquiry' : 'New Inquiry'}
                 </h3>
-                <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-700">
+                <button type="button" onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-700">
                   <X size={22} />
                 </button>
-              </motion.div>
+              </div>
 
               <form onSubmit={handleSubmit} className="overflow-y-auto p-6 space-y-6">
-                <motion.section initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+                <section className="space-y-4">
                   <h4 className="text-sm font-bold text-slate-800 border-b pb-2">Inquiry details</h4>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                    <div>
                       <label className={labelClass}>Inquiry received date</label>
                       <input type="date" className={inputClass} value={form.inquiryReceivedDate ?? ''} onChange={(e) => setForm({ ...form, inquiryReceivedDate: e.target.value })} />
-                    </motion.div>
+                    </div>
                     <div>
                       <label className={labelClass}>Mode of inquiry</label>
                       <select className={inputClass} value={form.modeOfInquiry ?? ''} onChange={(e) => setForm({ ...form, modeOfInquiry: e.target.value })}>
@@ -418,20 +638,20 @@ const Orders = () => {
                         {MODE_OF_INQUIRY.map((m) => <option key={m} value={m}>{m}</option>)}
                       </select>
                     </div>
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.05 }}>
+                    <div>
                       <label className={labelClass}>Category (LV / CMS / MEP)</label>
                       <select className={inputClass} value={form.category ?? ''} onChange={(e) => setForm({ ...form, category: e.target.value as Inquiry['category'] })}>
                         <option value="LV">LV</option>
                         <option value="CMS">CMS</option>
                         <option value="MEP">MEP</option>
                       </select>
-                    </motion.div>
+                    </div>
                   </div>
-                </motion.section>
+                </section>
 
-                <motion.section initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="space-y-4">
+                <section className="space-y-4">
                   <h4 className="text-sm font-bold text-slate-800 border-b pb-2">Customer & project</h4>
-                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className={labelClass}>Link existing customer (optional)</label>
                       <select
@@ -452,32 +672,15 @@ const Orders = () => {
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>
                           <label className={labelClass}>Contact person</label>
-                          <input
-                            className={inputClass}
-                            placeholder="Name"
-                            value={form.contactDetails ?? ''}
-                            onChange={(e) => setForm({ ...form, contactDetails: e.target.value })}
-                          />
+                          <input className={inputClass} placeholder="Name" value={form.contactDetails ?? ''} onChange={(e) => setForm({ ...form, contactDetails: e.target.value })} />
                         </div>
                         <div>
                           <label className={labelClass}>Phone number</label>
-                          <input
-                            type="tel"
-                            className={inputClass}
-                            placeholder="+94 77 123 4567"
-                            value={form.contactPhone ?? ''}
-                            onChange={(e) => setForm({ ...form, contactPhone: e.target.value })}
-                          />
+                          <input type="tel" className={inputClass} placeholder="+94 77 123 4567" value={form.contactPhone ?? ''} onChange={(e) => setForm({ ...form, contactPhone: e.target.value })} />
                         </div>
                         <div>
                           <label className={labelClass}>Email address</label>
-                          <input
-                            type="email"
-                            className={inputClass}
-                            placeholder="name@company.com"
-                            value={form.contactEmail ?? ''}
-                            onChange={(e) => setForm({ ...form, contactEmail: e.target.value })}
-                          />
+                          <input type="email" className={inputClass} placeholder="name@company.com" value={form.contactEmail ?? ''} onChange={(e) => setForm({ ...form, contactEmail: e.target.value })} />
                         </div>
                       </div>
                     </div>
@@ -489,10 +692,10 @@ const Orders = () => {
                       <label className={labelClass}>Document (reference / file name)</label>
                       <input className={inputClass} value={form.document ?? ''} onChange={(e) => setForm({ ...form, document: e.target.value })} />
                     </div>
-                  </motion.div>
-                </motion.section>
+                  </div>
+                </section>
 
-                <motion.section initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="space-y-4">
+                <section className="space-y-4">
                   <h4 className="text-sm font-bold text-slate-800 border-b pb-2">Quotation</h4>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
@@ -523,9 +726,9 @@ const Orders = () => {
                       <input type="date" className={inputClass} value={form.quotationSubmittedDate ?? ''} onChange={(e) => setForm({ ...form, quotationSubmittedDate: e.target.value })} />
                     </div>
                   </div>
-                </motion.section>
+                </section>
 
-                <motion.section initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="space-y-4">
+                <section className="space-y-4">
                   <h4 className="text-sm font-bold text-slate-800 border-b pb-2">Award & PO</h4>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
@@ -560,16 +763,16 @@ const Orders = () => {
                       <textarea className={`${inputClass} min-h-[80px]`} value={form.remarks ?? ''} onChange={(e) => setForm({ ...form, remarks: e.target.value })} />
                     </div>
                   </div>
-                </motion.section>
+                </section>
 
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex gap-3 pt-2 border-t border-slate-100">
+                <div className="flex gap-3 pt-2 border-t border-slate-100">
                   <button type="button" onClick={() => setShowModal(false)} className="flex-1 py-3 rounded-lg border border-slate-200 font-semibold text-slate-600 hover:bg-slate-50">
                     Cancel
                   </button>
                   <button type="submit" disabled={saving} className="flex-1 py-3 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 disabled:opacity-60">
                     {saving ? 'Saving...' : editingId ? 'Update inquiry' : 'Save inquiry'}
                   </button>
-                </motion.div>
+                </div>
               </form>
             </motion.div>
           </motion.div>
