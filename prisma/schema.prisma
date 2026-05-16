@@ -53,6 +53,8 @@ model Inquiry {
   customer               Customer?      @relation(fields: [customerId], references: [id], onDelete: SetNull)
   customerName           String         @default("")
   contactDetails         String?
+  contactPhone           String?
+  contactEmail           String?
   projectName            String?
   document               String?
   salesPersonId          String?

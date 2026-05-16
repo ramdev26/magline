@@ -117,10 +117,16 @@ export async function inquiries(req: ApiRequest, res: ApiResponse) {
       if (customer && !data.customerName) {
         data.customerName = customer.name;
       }
-      if (customer && !data.contactDetails) {
-        data.contactDetails = [customer.contact, customer.phone, customer.email]
-          .filter(Boolean)
-          .join(" · ");
+      if (customer) {
+        if (!data.contactDetails && customer.contact) {
+          data.contactDetails = customer.contact;
+        }
+        if (!data.contactPhone && customer.phone) {
+          data.contactPhone = customer.phone;
+        }
+        if (!data.contactEmail && customer.email) {
+          data.contactEmail = customer.email;
+        }
       }
     }
 

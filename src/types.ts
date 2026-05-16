@@ -15,6 +15,8 @@ export interface Inquiry {
   customerId: string | null;
   customerName: string;
   contactDetails: string | null;
+  contactPhone: string | null;
+  contactEmail: string | null;
   projectName: string | null;
   document: string | null;
   salesPersonId: string | null;

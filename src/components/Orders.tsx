@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Inquiry, Customer, SalesPerson } from '../types';
 import { formatLKR } from '../utils/currency';
+import { formatInquiryContact } from '../utils/contact';
 import { emptyInquiryForm, MODE_OF_INQUIRY, ONGOING_TENDER } from '../constants/inquiry';
 import { Plus, Search, X, Pencil, Download, Upload } from 'lucide-react';
 import { exportInquiriesToExcel, parseInquiriesFromExcel } from '../utils/excel';
@@ -48,7 +49,9 @@ const Orders = () => {
       row.customerName.toLowerCase().includes(q) ||
       (row.projectName ?? '').toLowerCase().includes(q) ||
       (row.quotationNo ?? '').toLowerCase().includes(q) ||
-      (row.poNo ?? '').toLowerCase().includes(q)
+      (row.poNo ?? '').toLowerCase().includes(q) ||
+      (row.contactPhone ?? '').toLowerCase().includes(q) ||
+      (row.contactEmail ?? '').toLowerCase().includes(q)
     );
   });
 
@@ -66,6 +69,8 @@ const Orders = () => {
       customerId: row.customerId,
       customerName: row.customerName,
       contactDetails: row.contactDetails ?? '',
+      contactPhone: row.contactPhone ?? '',
+      contactEmail: row.contactEmail ?? '',
       projectName: row.projectName ?? '',
       document: row.document ?? '',
       salesPersonId: row.salesPersonId,
@@ -93,7 +98,9 @@ const Orders = () => {
       ...prev,
       customerId,
       customerName: customer.name,
-      contactDetails: [customer.contact, customer.phone, customer.email].filter(Boolean).join(' · '),
+      contactDetails: customer.contact,
+      contactPhone: customer.phone,
+      contactEmail: customer.email,
     }));
   };
 
@@ -177,7 +184,19 @@ const Orders = () => {
     { key: 'inquiryReceivedDate', label: 'Inquiry Received Date', render: (r: Inquiry) => r.inquiryReceivedDate ?? '—' },
     { key: 'modeOfInquiry', label: 'Mode of Inquiry', render: (r: Inquiry) => r.modeOfInquiry ?? '—' },
     { key: 'customerName', label: 'Customer Name', render: (r: Inquiry) => r.customerName },
-    { key: 'contactDetails', label: 'Contact Details', render: (r: Inquiry) => r.contactDetails ?? '—' },
+    {
+      key: 'contactDetails',
+      label: 'Contact Details',
+      render: (r: Inquiry) => {
+        const text = formatInquiryContact(r);
+        if (!text) return '—';
+        return (
+          <span className="whitespace-nowrap" title={text}>
+            {text}
+          </span>
+        );
+      },
+    },
     { key: 'projectName', label: 'Project Name', render: (r: Inquiry) => r.projectName ?? '—' },
     { key: 'document', label: 'Document', render: (r: Inquiry) => r.document ?? '—' },
     { key: 'salesPersonName', label: 'Sales Person', render: (r: Inquiry) => r.salesPersonName ?? '—' },
@@ -386,9 +405,34 @@ const Orders = () => {
                       <label className={labelClass}>Customer name *</label>
                       <input required className={inputClass} value={form.customerName} onChange={(e) => setForm({ ...form, customerName: e.target.value })} />
                     </div>
-                    <div className="md:col-span-2">
-                      <label className={labelClass}>Contact details</label>
-                      <input className={inputClass} value={form.contactDetails ?? ''} onChange={(e) => setForm({ ...form, contactDetails: e.target.value })} />
+                    <motion.div>
+                      <label className={labelClass}>Contact person</label>
+                      <input
+                        className={inputClass}
+                        placeholder="Name or role"
+                        value={form.contactDetails ?? ''}
+                        onChange={(e) => setForm({ ...form, contactDetails: e.target.value })}
+                      />
+                    </motion.div>
+                    <div>
+                      <label className={labelClass}>Phone number</label>
+                      <input
+                        type="tel"
+                        className={inputClass}
+                        placeholder="+94 77 123 4567"
+                        value={form.contactPhone ?? ''}
+                        onChange={(e) => setForm({ ...form, contactPhone: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className={labelClass}>Email address</label>
+                      <input
+                        type="email"
+                        className={inputClass}
+                        placeholder="name@company.com"
+                        value={form.contactEmail ?? ''}
+                        onChange={(e) => setForm({ ...form, contactEmail: e.target.value })}
+                      />
                     </div>
                     <div>
                       <label className={labelClass}>Project name</label>

@@ -9,6 +9,8 @@ export const emptyInquiryForm = (): InquiryFormData => ({
   customerId: null,
   customerName: '',
   contactDetails: '',
+  contactPhone: '',
+  contactEmail: '',
   projectName: '',
   document: '',
   salesPersonId: null,
