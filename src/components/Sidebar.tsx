@@ -6,7 +6,7 @@ const Sidebar = () => {
   const links = [
     { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
     { to: '/customers', icon: Users, label: 'Customers' },
-    { to: '/orders', icon: ShoppingCart, label: 'Orders' },
+    { to: '/orders', icon: ShoppingCart, label: 'Inquiries' },
     { to: '/sales', icon: Briefcase, label: 'Sales Team' },
   ];
 

@@ -1,0 +1,75 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum OrderCategory {
+  LV
+  CMS
+  MEP
+}
+
+model Customer {
+  id         String    @id @default(cuid())
+  name       String
+  contact    String
+  email      String
+  phone      String
+  address    String
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  inquiries  Inquiry[]
+}
+
+model SalesManager {
+  id           String        @id @default(cuid())
+  name         String
+  department   String
+  createdAt    DateTime      @default(now())
+  salesPersons SalesPerson[]
+}
+
+model SalesPerson {
+  id          String        @id @default(cuid())
+  name        String
+  performance Int           @default(0)
+  managerId   String?
+  manager     SalesManager? @relation(fields: [managerId], references: [id], onDelete: SetNull)
+  createdAt   DateTime      @default(now())
+  inquiries   Inquiry[]
+}
+
+model Inquiry {
+  id                     String         @id @default(cuid())
+  serialNo               Int            @unique @default(autoincrement())
+  inquiryReceivedDate    DateTime?
+  modeOfInquiry          String?
+  customerId             String?
+  customer               Customer?      @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  customerName           String         @default("")
+  contactDetails         String?
+  projectName            String?
+  document               String?
+  salesPersonId          String?
+  salesPerson            SalesPerson?   @relation(fields: [salesPersonId], references: [id], onDelete: SetNull)
+  quotationRequiredDate  DateTime?
+  engineer               String?
+  quotationNo            String?
+  quotationAmount        Decimal?       @db.Decimal(14, 2)
+  quotationSubmittedDate DateTime?
+  ongoingTender          String?
+  jsbNo                  String?
+  poNo                   String?
+  poReceivedDate         DateTime?
+  awardedParty           String?
+  awardedPrice           Decimal?       @db.Decimal(14, 2)
+  remarks                String?
+  category               OrderCategory?
+  createdAt              DateTime       @default(now())
+  updatedAt              DateTime       @updatedAt
+}

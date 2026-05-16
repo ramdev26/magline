@@ -1,186 +1,489 @@
 import React, { useEffect, useState } from 'react';
-import { Order } from '../types';
-import { ShoppingCart, Filter, ArrowUpRight } from 'lucide-react';
-import { motion } from 'motion/react';
+import { Inquiry, Customer, SalesPerson } from '../types';
+import { formatLKR } from '../utils/currency';
+import { emptyInquiryForm, MODE_OF_INQUIRY, ONGOING_TENDER } from '../constants/inquiry';
+import { Plus, Search, X, Pencil, Download, Upload } from 'lucide-react';
+import { exportInquiriesToExcel, parseInquiriesFromExcel } from '../utils/excel';
+import { motion, AnimatePresence } from 'motion/react';
+
+const inputClass =
+  'w-full rounded-lg border border-slate-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 p-2.5 bg-slate-50 text-sm';
+
+const labelClass = 'block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1';
 
 const Orders = () => {
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [inquiries, setInquiries] = useState<Inquiry[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [salesPersons, setSalesPersons] = useState<SalesPerson[]>([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [showModal, setShowModal] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState(emptyInquiryForm());
+  const [importing, setImporting] = useState(false);
+  const [importMessage, setImportMessage] = useState<string | null>(null);
+
+  const loadData = async () => {
+    setLoading(true);
+    const [inqRes, custRes, salesRes] = await Promise.all([
+      fetch('/api/inquiries'),
+      fetch('/api/customers'),
+      fetch('/api/sales'),
+    ]);
+    setInquiries(await inqRes.json());
+    setCustomers(await custRes.json());
+    setSalesPersons((await salesRes.json()).persons ?? []);
+    setLoading(false);
+  };
 
   useEffect(() => {
-    fetch('/api/orders')
-      .then(res => res.json())
-      .then(data => {
-        setOrders(data);
-        setLoading(false);
-      });
+    loadData();
   }, []);
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'Completed': return 'bg-green-50 text-green-700';
-      case 'Pending': return 'bg-yellow-50 text-yellow-700';
-      case 'Shipped': return 'bg-blue-50 text-blue-700';
-      default: return 'bg-slate-50 text-slate-700';
-    }
-  };
-
-  const getCategoryColor = (cat: string) => {
-    switch (cat) {
-      case 'LV': return 'bg-slate-900';
-      case 'CMS': return 'bg-blue-600';
-      case 'MEP': return 'bg-green-600';
-      default: return 'bg-slate-400';
-    }
-  };
-
-  const [showModal, setShowModal] = useState(false);
-  const [newOrder, setNewOrder] = useState({ 
-    customerId: '1', 
-    amount: 0, 
-    status: 'Pending' as const, 
-    category: 'LV' as const, 
-    date: new Date().toISOString().split('T')[0],
-    salesPersonId: 'S001'
+  const filtered = inquiries.filter((row) => {
+    const q = search.toLowerCase();
+    return (
+      String(row.serialNo).includes(q) ||
+      row.customerName.toLowerCase().includes(q) ||
+      (row.projectName ?? '').toLowerCase().includes(q) ||
+      (row.quotationNo ?? '').toLowerCase().includes(q) ||
+      (row.poNo ?? '').toLowerCase().includes(q)
+    );
   });
 
-  const handleAddOrder = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const res = await fetch('/api/orders', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newOrder)
+  const openCreate = () => {
+    setEditingId(null);
+    setForm(emptyInquiryForm());
+    setShowModal(true);
+  };
+
+  const openEdit = (row: Inquiry) => {
+    setEditingId(row.id);
+    setForm({
+      inquiryReceivedDate: row.inquiryReceivedDate ?? '',
+      modeOfInquiry: row.modeOfInquiry ?? '',
+      customerId: row.customerId,
+      customerName: row.customerName,
+      contactDetails: row.contactDetails ?? '',
+      projectName: row.projectName ?? '',
+      document: row.document ?? '',
+      salesPersonId: row.salesPersonId,
+      quotationRequiredDate: row.quotationRequiredDate ?? '',
+      engineer: row.engineer ?? '',
+      quotationNo: row.quotationNo ?? '',
+      quotationAmount: row.quotationAmount,
+      quotationSubmittedDate: row.quotationSubmittedDate ?? '',
+      ongoingTender: row.ongoingTender ?? '',
+      jsbNo: row.jsbNo ?? '',
+      poNo: row.poNo ?? '',
+      poReceivedDate: row.poReceivedDate ?? '',
+      awardedParty: row.awardedParty ?? '',
+      awardedPrice: row.awardedPrice,
+      remarks: row.remarks ?? '',
+      category: row.category ?? 'LV',
     });
+    setShowModal(true);
+  };
+
+  const onCustomerPick = (customerId: string) => {
+    const customer = customers.find((c) => c.id === customerId);
+    if (!customer) return;
+    setForm((prev) => ({
+      ...prev,
+      customerId,
+      customerName: customer.name,
+      contactDetails: [customer.contact, customer.phone, customer.email].filter(Boolean).join(' · '),
+    }));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.customerName.trim()) return;
+    setSaving(true);
+
+    const payload = {
+      ...form,
+      salesPersonId: form.salesPersonId || null,
+      customerId: form.customerId || null,
+      quotationAmount: form.quotationAmount ?? null,
+      awardedPrice: form.awardedPrice ?? null,
+    };
+
+    const url = editingId ? `/api/inquiries/${editingId}` : '/api/inquiries';
+    const method = editingId ? 'PUT' : 'POST';
+
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
     if (res.ok) {
-      const added = await res.json();
-      setOrders([...orders, added]);
       setShowModal(false);
+      loadData();
+    }
+    setSaving(false);
+  };
+
+  const handleExport = () => {
+    exportInquiriesToExcel(filtered.length ? filtered : inquiries);
+  };
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    setImporting(true);
+    setImportMessage(null);
+
+    try {
+      const buffer = await file.arrayBuffer();
+      const { payloads, skipped } = parseInquiriesFromExcel(buffer, salesPersons);
+
+      if (payloads.length === 0) {
+        setImportMessage('No valid rows found. Check that "Customer Name" column is filled.');
+        return;
+      }
+
+      const res = await fetch('/api/inquiries/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inquiries: payloads }),
+      });
+      const result = await res.json();
+
+      if (!res.ok) {
+        setImportMessage(result.error ?? 'Import failed');
+        return;
+      }
+
+      const skipNote = skipped.length ? ` Skipped ${skipped.length} empty row(s).` : '';
+      const errNote = result.errors?.length
+        ? ` ${result.errors.length} row(s) had errors.`
+        : '';
+      setImportMessage(`Imported ${result.created} of ${result.total} records.${skipNote}${errNote}`);
+      loadData();
+    } catch {
+      setImportMessage('Could not read Excel file. Use .xlsx or .xls format.');
+    } finally {
+      setImporting(false);
     }
   };
+
+  const columns = [
+    { key: 'serialNo', label: 'Serial No', render: (r: Inquiry) => r.serialNo },
+    { key: 'inquiryReceivedDate', label: 'Inquiry Received Date', render: (r: Inquiry) => r.inquiryReceivedDate ?? '—' },
+    { key: 'modeOfInquiry', label: 'Mode of Inquiry', render: (r: Inquiry) => r.modeOfInquiry ?? '—' },
+    { key: 'customerName', label: 'Customer Name', render: (r: Inquiry) => r.customerName },
+    { key: 'contactDetails', label: 'Contact Details', render: (r: Inquiry) => r.contactDetails ?? '—' },
+    { key: 'projectName', label: 'Project Name', render: (r: Inquiry) => r.projectName ?? '—' },
+    { key: 'document', label: 'Document', render: (r: Inquiry) => r.document ?? '—' },
+    { key: 'salesPersonName', label: 'Sales Person', render: (r: Inquiry) => r.salesPersonName ?? '—' },
+    { key: 'quotationRequiredDate', label: 'Quotation Required Date', render: (r: Inquiry) => r.quotationRequiredDate ?? '—' },
+    { key: 'engineer', label: 'Engineer', render: (r: Inquiry) => r.engineer ?? '—' },
+    { key: 'quotationNo', label: 'Quotation No', render: (r: Inquiry) => r.quotationNo ?? '—' },
+    { key: 'quotationAmount', label: 'Quotation Amount (LKR)', render: (r: Inquiry) => r.quotationAmount != null ? formatLKR(r.quotationAmount) : '—' },
+    { key: 'quotationSubmittedDate', label: 'Quotation Submitted Date', render: (r: Inquiry) => r.quotationSubmittedDate ?? '—' },
+    { key: 'ongoingTender', label: 'Ongoing/Tender', render: (r: Inquiry) => r.ongoingTender ?? '—' },
+    { key: 'jsbNo', label: 'JSB No', render: (r: Inquiry) => r.jsbNo ?? '—' },
+    { key: 'poNo', label: 'PO No', render: (r: Inquiry) => r.poNo ?? '—' },
+    { key: 'poReceivedDate', label: 'PO Received Date', render: (r: Inquiry) => r.poReceivedDate ?? '—' },
+    { key: 'awardedParty', label: 'Awarded Party', render: (r: Inquiry) => r.awardedParty ?? '—' },
+    { key: 'awardedPrice', label: 'Awarded Price (LKR)', render: (r: Inquiry) => r.awardedPrice != null ? formatLKR(r.awardedPrice) : '—' },
+    { key: 'remarks', label: 'Remarks', render: (r: Inquiry) => r.remarks ?? '—' },
+  ];
 
   return (
     <div className="flex flex-col min-h-screen bg-slate-50">
-      <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8">
-        <div className="flex items-center gap-4">
-          <h2 className="text-lg font-semibold text-slate-900">Inquiries & Quotes</h2>
-          <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wide">TOTAL: {orders.length}</span>
+      <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 shrink-0">
+        <motion.div initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} className="flex items-center gap-4">
+          <h2 className="text-lg font-semibold text-slate-900">Inquiry Register</h2>
+          <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wide">
+            {inquiries.length} records
+          </span>
+        </motion.div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={inquiries.length === 0}
+            className="px-3 py-2 border border-slate-200 bg-white rounded text-sm font-medium hover:bg-slate-50 flex items-center gap-2 disabled:opacity-50"
+          >
+            <Download size={16} /> Export Excel
+          </button>
+          <label className="px-3 py-2 border border-slate-200 bg-white rounded text-sm font-medium hover:bg-slate-50 flex items-center gap-2 cursor-pointer">
+            <Upload size={16} />
+            {importing ? 'Importing...' : 'Import Excel'}
+            <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleImportFile} disabled={importing} />
+          </label>
+          <button
+            onClick={openCreate}
+            className="px-4 py-2 bg-blue-600 text-white rounded text-sm font-medium shadow-sm hover:bg-blue-700 flex items-center gap-2"
+          >
+            <Plus size={16} /> New Inquiry
+          </button>
         </div>
-        <button 
-          onClick={() => setShowModal(true)}
-          className="px-4 py-2 bg-blue-600 text-white rounded text-sm font-medium shadow-sm shadow-blue-200 hover:bg-blue-700 transition-colors flex items-center gap-2"
-        >
-          <ShoppingCart size={16} /> Create Order
-        </button>
       </header>
 
-      <div className="p-8">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {loading ? (
-               <div className="col-span-full py-12 text-center text-sm text-slate-400 italic">Fetching order stream...</div>
-          ) : orders.map((order, i) => (
-            <motion.div
-              key={order.id}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.1 }}
-              className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden flex flex-col"
-            >
-              <div className="px-5 py-4 border-b border-slate-50 flex justify-between items-center">
-                 <span className={`px-2 py-1 rounded-md text-[10px] font-bold text-white ${getCategoryColor(order.category)}`}>
-                   {order.category}
-                 </span>
-                 <span className={`text-[11px] px-2 py-0.5 rounded font-semibold ${getStatusColor(order.status)}`}>
-                   {order.status}
-                 </span>
-              </div>
-              
-              <div className="p-5 flex-1">
-                <div className="text-lg font-bold text-slate-900 mb-4">{order.id}</div>
-                
-                <div className="space-y-3 mb-6">
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-slate-500">Value</span>
-                    <span className="font-mono font-bold text-slate-900">${order.amount.toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-slate-500">Scheduled</span>
-                    <span className="text-slate-700">{order.date}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="px-5 py-4 bg-slate-50 border-t border-slate-100 flex justify-between items-center">
-                 <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-600">KP</div>
-                    <span className="text-xs font-medium text-slate-600">Kamal Perera</span>
-                 </div>
-                 <button className="text-blue-600 hover:text-blue-800 transition-colors">
-                   <ArrowUpRight size={16} />
-                 </button>
-              </div>
-            </motion.div>
-          ))}
-        </div>
-      </div>
-
-      {showModal && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <motion.div 
-            initial={{ scale: 0.95, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="bg-white rounded-xl p-8 max-w-md w-full border border-slate-200 shadow-2xl"
+      <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="p-6 flex-1 flex flex-col min-h-0">
+        {importMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-4 text-sm px-4 py-3 rounded-lg border border-blue-200 bg-blue-50 text-blue-800"
           >
-            <h3 className="text-xl font-bold text-slate-900 mb-6">Log New System Inquiry</h3>
-            <form onSubmit={handleAddOrder} className="space-y-5 text-sm">
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Category Selection</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {['LV', 'CMS', 'MEP'].map(cat => (
-                    <button
-                      key={cat}
-                      type="button"
-                      onClick={() => setNewOrder({ ...newOrder, category: cat as any })}
-                      className={`py-2 px-3 rounded-lg border font-semibold transition-all ${
-                        newOrder.category === cat 
-                        ? 'bg-slate-900 text-white border-slate-900' 
-                        : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400'
-                      }`}
-                    >
-                      {cat}
-                    </button>
+            {importMessage}
+          </motion.div>
+        )}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="mb-4 flex items-center gap-3 bg-white border border-slate-200 rounded-lg px-4 py-3"
+        >
+          <Search size={18} className="text-slate-400 shrink-0" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search serial, customer, project, quotation or PO..."
+            className="flex-1 bg-transparent border-none text-sm outline-none text-slate-700"
+          />
+        </motion.div>
+
+        <div className="bg-white border border-slate-200 rounded-lg shadow-sm flex-1 overflow-hidden flex flex-col">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.1 }}
+            className="overflow-auto flex-1"
+          >
+            <table className="w-max min-w-full text-left text-xs">
+              <thead className="bg-slate-900 text-white sticky top-0 z-10">
+                <tr>
+                  <th className="px-3 py-3 font-semibold whitespace-nowrap sticky left-0 bg-slate-900 z-20">Actions</th>
+                  {columns.map((col) => (
+                    <th key={col.key} className="px-3 py-3 font-semibold whitespace-nowrap border-l border-slate-700">
+                      {col.label}
+                    </th>
                   ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Est. Quoted Amount (USD)</label>
-                <input 
-                  type="number" 
-                  className="w-full rounded-lg border-slate-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 p-3 bg-slate-50 font-mono"
-                  value={newOrder.amount}
-                  onChange={e => setNewOrder({ ...newOrder, amount: Number(e.target.value) })}
-                />
-              </div>
-
-              <div className="flex gap-4 pt-4">
-                <button 
-                  type="button" 
-                  onClick={() => setShowModal(false)}
-                  className="flex-1 py-3 px-4 rounded-lg border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button 
-                  type="submit"
-                  className="flex-1 py-3 px-4 rounded-lg bg-blue-600 text-white font-semibold shadow-sm shadow-blue-200 hover:bg-blue-700 transition-colors"
-                >
-                  Commit Log
-                </button>
-              </div>
-            </form>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-slate-700">
+                {loading ? (
+                  <tr>
+                    <td colSpan={columns.length + 1} className="px-6 py-16 text-center text-slate-400">
+                      Loading inquiry register...
+                    </td>
+                  </tr>
+                ) : filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={columns.length + 1} className="px-6 py-16 text-center text-slate-400">
+                      No inquiries yet. Click &quot;New Inquiry&quot; to add the first record.
+                    </td>
+                  </tr>
+                ) : (
+                  filtered.map((row, i) => (
+                    <motion.tr
+                      key={row.id}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ delay: Math.min(i * 0.02, 0.3) }}
+                      className="hover:bg-blue-50/50"
+                    >
+                      <td className="px-3 py-2 whitespace-nowrap sticky left-0 bg-white border-r border-slate-100">
+                        <button
+                          onClick={() => openEdit(row)}
+                          className="p-1.5 rounded-md text-blue-600 hover:bg-blue-100"
+                          title="Edit"
+                        >
+                          <Pencil size={14} />
+                        </button>
+                      </td>
+                      {columns.map((col) => (
+                        <td key={col.key} className="px-3 py-2 whitespace-nowrap max-w-[220px] truncate border-l border-slate-50">
+                          {col.render(row)}
+                        </td>
+                      ))}
+                    </motion.tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </motion.div>
         </div>
-      )}
+      </motion.div>
+
+      <AnimatePresence>
+        {showModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.96, opacity: 0, y: 16 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.96, opacity: 0 }}
+              className="bg-white rounded-xl w-full max-w-4xl max-h-[92vh] overflow-hidden border border-slate-200 shadow-2xl flex flex-col"
+            >
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="px-6 py-4 border-b border-slate-100 flex justify-between items-center shrink-0"
+              >
+                <h3 className="text-lg font-bold text-slate-900">
+                  {editingId ? 'Edit Inquiry' : 'New Inquiry'}
+                </h3>
+                <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-700">
+                  <X size={22} />
+                </button>
+              </motion.div>
+
+              <form onSubmit={handleSubmit} className="overflow-y-auto p-6 space-y-6">
+                <motion.section initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+                  <h4 className="text-sm font-bold text-slate-800 border-b pb-2">Inquiry details</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                      <label className={labelClass}>Inquiry received date</label>
+                      <input type="date" className={inputClass} value={form.inquiryReceivedDate ?? ''} onChange={(e) => setForm({ ...form, inquiryReceivedDate: e.target.value })} />
+                    </motion.div>
+                    <div>
+                      <label className={labelClass}>Mode of inquiry</label>
+                      <select className={inputClass} value={form.modeOfInquiry ?? ''} onChange={(e) => setForm({ ...form, modeOfInquiry: e.target.value })}>
+                        <option value="">Select...</option>
+                        {MODE_OF_INQUIRY.map((m) => <option key={m} value={m}>{m}</option>)}
+                      </select>
+                    </div>
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.05 }}>
+                      <label className={labelClass}>Category (LV / CMS / MEP)</label>
+                      <select className={inputClass} value={form.category ?? ''} onChange={(e) => setForm({ ...form, category: e.target.value as Inquiry['category'] })}>
+                        <option value="LV">LV</option>
+                        <option value="CMS">CMS</option>
+                        <option value="MEP">MEP</option>
+                      </select>
+                    </motion.div>
+                  </div>
+                </motion.section>
+
+                <motion.section initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="space-y-4">
+                  <h4 className="text-sm font-bold text-slate-800 border-b pb-2">Customer & project</h4>
+                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className={labelClass}>Link existing customer (optional)</label>
+                      <select
+                        className={inputClass}
+                        value={form.customerId ?? ''}
+                        onChange={(e) => (e.target.value ? onCustomerPick(e.target.value) : setForm({ ...form, customerId: null }))}
+                      >
+                        <option value="">— Manual entry —</option>
+                        {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className={labelClass}>Customer name *</label>
+                      <input required className={inputClass} value={form.customerName} onChange={(e) => setForm({ ...form, customerName: e.target.value })} />
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className={labelClass}>Contact details</label>
+                      <input className={inputClass} value={form.contactDetails ?? ''} onChange={(e) => setForm({ ...form, contactDetails: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className={labelClass}>Project name</label>
+                      <input className={inputClass} value={form.projectName ?? ''} onChange={(e) => setForm({ ...form, projectName: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className={labelClass}>Document (reference / file name)</label>
+                      <input className={inputClass} value={form.document ?? ''} onChange={(e) => setForm({ ...form, document: e.target.value })} />
+                    </div>
+                  </motion.div>
+                </motion.section>
+
+                <motion.section initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="space-y-4">
+                  <h4 className="text-sm font-bold text-slate-800 border-b pb-2">Quotation</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className={labelClass}>Sales person</label>
+                      <select className={inputClass} value={form.salesPersonId ?? ''} onChange={(e) => setForm({ ...form, salesPersonId: e.target.value || null })}>
+                        <option value="">Unassigned</option>
+                        {salesPersons.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className={labelClass}>Quotation required date</label>
+                      <input type="date" className={inputClass} value={form.quotationRequiredDate ?? ''} onChange={(e) => setForm({ ...form, quotationRequiredDate: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className={labelClass}>Engineer</label>
+                      <input className={inputClass} value={form.engineer ?? ''} onChange={(e) => setForm({ ...form, engineer: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className={labelClass}>Quotation no</label>
+                      <input className={inputClass} value={form.quotationNo ?? ''} onChange={(e) => setForm({ ...form, quotationNo: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className={labelClass}>Quotation amount (LKR)</label>
+                      <input type="number" min={0} className={inputClass} value={form.quotationAmount ?? ''} onChange={(e) => setForm({ ...form, quotationAmount: e.target.value ? Number(e.target.value) : null })} />
+                    </div>
+                    <div>
+                      <label className={labelClass}>Quotation submitted date</label>
+                      <input type="date" className={inputClass} value={form.quotationSubmittedDate ?? ''} onChange={(e) => setForm({ ...form, quotationSubmittedDate: e.target.value })} />
+                    </div>
+                  </div>
+                </motion.section>
+
+                <motion.section initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="space-y-4">
+                  <h4 className="text-sm font-bold text-slate-800 border-b pb-2">Award & PO</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className={labelClass}>Ongoing / tender</label>
+                      <select className={inputClass} value={form.ongoingTender ?? ''} onChange={(e) => setForm({ ...form, ongoingTender: e.target.value })}>
+                        <option value="">—</option>
+                        {ONGOING_TENDER.map((v) => <option key={v} value={v}>{v}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className={labelClass}>JSB no</label>
+                      <input className={inputClass} value={form.jsbNo ?? ''} onChange={(e) => setForm({ ...form, jsbNo: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className={labelClass}>PO no</label>
+                      <input className={inputClass} value={form.poNo ?? ''} onChange={(e) => setForm({ ...form, poNo: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className={labelClass}>PO received date</label>
+                      <input type="date" className={inputClass} value={form.poReceivedDate ?? ''} onChange={(e) => setForm({ ...form, poReceivedDate: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className={labelClass}>Awarded party</label>
+                      <input className={inputClass} value={form.awardedParty ?? ''} onChange={(e) => setForm({ ...form, awardedParty: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className={labelClass}>Awarded price (LKR)</label>
+                      <input type="number" min={0} className={inputClass} value={form.awardedPrice ?? ''} onChange={(e) => setForm({ ...form, awardedPrice: e.target.value ? Number(e.target.value) : null })} />
+                    </div>
+                    <div className="md:col-span-3">
+                      <label className={labelClass}>Remarks</label>
+                      <textarea className={`${inputClass} min-h-[80px]`} value={form.remarks ?? ''} onChange={(e) => setForm({ ...form, remarks: e.target.value })} />
+                    </div>
+                  </div>
+                </motion.section>
+
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex gap-3 pt-2 border-t border-slate-100">
+                  <button type="button" onClick={() => setShowModal(false)} className="flex-1 py-3 rounded-lg border border-slate-200 font-semibold text-slate-600 hover:bg-slate-50">
+                    Cancel
+                  </button>
+                  <button type="submit" disabled={saving} className="flex-1 py-3 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 disabled:opacity-60">
+                    {saving ? 'Saving...' : editingId ? 'Update inquiry' : 'Save inquiry'}
+                  </button>
+                </motion.div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
