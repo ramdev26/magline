@@ -1,8 +1,4 @@
 {
   "name": "Magline Management System",
-  "description": "Comprehensive management system for Magline Switchboards (Pvt) Ltd to track customers, orders, categories (LV, CMS, MEP), and sales performance.",
-  "requestFramePermissions": [],
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
+  "description": "Management system for Magline Switchboards (Pvt) Ltd — customers, orders, categories (LV, CMS, MEP), and sales performance."
 }
