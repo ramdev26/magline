@@ -70,14 +70,40 @@ export async function dashboard(_req: ApiRequest, res: ApiResponse) {
   });
 }
 
+function mapCustomerContact(row: { id: string; contact: string; email: string; phone: string }) {
+  return { id: row.id, contact: row.contact, email: row.email, phone: row.phone };
+}
+
+function parseAdditionalContacts(body: Record<string, unknown>) {
+  const raw = body.additionalContacts;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((item): item is Record<string, unknown> => item != null && typeof item === "object")
+    .map((item) => ({
+      contact: String(item.contact ?? ""),
+      email: String(item.email ?? ""),
+      phone: String(item.phone ?? ""),
+    }))
+    .filter((item) => item.contact.trim() || item.email.trim() || item.phone.trim());
+}
+
 export async function customers(req: ApiRequest, res: ApiResponse) {
   if (req.method === "GET") {
-    const list = await prisma.customer.findMany({ orderBy: { createdAt: "desc" } });
-    return res.status(200).json(list);
+    const list = await prisma.customer.findMany({
+      orderBy: { createdAt: "desc" },
+      include: { additionalContacts: { orderBy: { createdAt: "asc" } } },
+    });
+    return res.status(200).json(
+      list.map((row) => ({
+        ...row,
+        additionalContacts: row.additionalContacts.map(mapCustomerContact),
+      })),
+    );
   }
 
   if (req.method === "POST") {
     const body = parseBody(req);
+    const additionalContacts = parseAdditionalContacts(body);
     const created = await prisma.customer.create({
       data: {
         name: String(body.name ?? ""),
@@ -85,9 +111,16 @@ export async function customers(req: ApiRequest, res: ApiResponse) {
         email: String(body.email ?? ""),
         phone: String(body.phone ?? ""),
         address: String(body.address ?? ""),
+        additionalContacts: additionalContacts.length
+          ? { create: additionalContacts }
+          : undefined,
       },
+      include: { additionalContacts: { orderBy: { createdAt: "asc" } } },
     });
-    return res.status(201).json(created);
+    return res.status(201).json({
+      ...created,
+      additionalContacts: created.additionalContacts.map(mapCustomerContact),
+    });
   }
 
   res.status(405).json({ error: "Method not allowed" });

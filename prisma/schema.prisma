@@ -31,15 +31,26 @@ model User {
 }
 
 model Customer {
-  id         String    @id @default(cuid())
-  name       String
-  contact    String
-  email      String
-  phone      String
-  address    String
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
-  inquiries  Inquiry[]
+  id                  String            @id @default(cuid())
+  name                String
+  contact             String
+  email               String
+  phone               String
+  address             String
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  inquiries           Inquiry[]
+  additionalContacts  CustomerContact[]
+}
+
+model CustomerContact {
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  contact    String   @default("")
+  email      String   @default("")
+  phone      String   @default("")
+  createdAt  DateTime @default(now())
 }
 
 model SalesManager {

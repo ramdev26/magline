@@ -1,3 +1,10 @@
+export interface CustomerContact {
+  id: string;
+  contact: string;
+  email: string;
+  phone: string;
+}
+
 export interface Customer {
   id: string;
   name: string;
@@ -5,6 +12,7 @@ export interface Customer {
   email: string;
   phone: string;
   address: string;
+  additionalContacts?: CustomerContact[];
 }
 
 export interface Inquiry {
