@@ -5,6 +5,13 @@ import { useAuth } from '../context/AuthContext';
 import { formatLKR } from '../utils/currency';
 import { emptyInquiryForm, MODE_OF_INQUIRY, ONGOING_TENDER } from '../constants/inquiry';
 import {
+  getInquiryWorkflowStatus,
+  INQUIRY_WORKFLOW_AUTO_HINT,
+  INQUIRY_WORKFLOW_META,
+  INQUIRY_WORKFLOW_ORDER,
+  type InquiryWorkflowStatus,
+} from '../utils/inquiryWorkflow';
+import {
   Plus,
   Search,
   X,
@@ -45,11 +52,10 @@ function formatDate(value: string | null) {
   return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-function inquiryStatus(row: Inquiry) {
-  if (row.poNo) return { label: 'PO received', className: 'bg-green-100 text-green-800 border-green-200' };
-  if (row.quotationSubmittedDate) return { label: 'Quoted', className: 'bg-sky-100 text-sky-800 border-sky-200' };
-  if (row.quotationNo) return { label: 'In quotation', className: 'bg-indigo-100 text-indigo-800 border-indigo-200' };
-  return { label: 'New inquiry', className: 'bg-slate-100 text-slate-700 border-slate-200' };
+function inquiryStatus(row: Inquiry, nowMs?: number) {
+  const key = getInquiryWorkflowStatus(row, nowMs);
+  const meta = INQUIRY_WORKFLOW_META[key];
+  return { label: meta.label, className: meta.className };
 }
 
 function DetailItem({ label, value }: { label: string; value: React.ReactNode }) {
@@ -79,6 +85,13 @@ const Orders = () => {
   const [form, setForm] = useState(emptyInquiryForm());
   const [importing, setImporting] = useState(false);
   const [importMessage, setImportMessage] = useState<string | null>(null);
+  /** Recompute Delay (>24h) counts without a full page reload. */
+  const [workflowClock, setWorkflowClock] = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = window.setInterval(() => setWorkflowClock(Date.now()), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
 
   const loadData = async () => {
     setLoading(true);
@@ -116,23 +129,40 @@ const Orders = () => {
       const matchesCategory = categoryFilter === 'all' || row.category === categoryFilter;
 
       let matchesStatus = true;
-      if (statusFilter === 'ongoing') matchesStatus = row.ongoingTender === 'Ongoing';
-      else if (statusFilter === 'tender') matchesStatus = row.ongoingTender === 'Tender';
-      else if (statusFilter === 'quoted') matchesStatus = !!row.quotationNo && !row.poNo;
-      else if (statusFilter === 'po') matchesStatus = !!row.poNo;
+      if (statusFilter !== 'all') {
+        matchesStatus = getInquiryWorkflowStatus(row, workflowClock) === statusFilter;
+      }
 
       return matchesSearch && matchesCategory && matchesStatus;
     });
-  }, [inquiries, search, categoryFilter, statusFilter]);
+  }, [inquiries, search, categoryFilter, statusFilter, workflowClock]);
 
   const stats = useMemo(() => {
-    const total = inquiries.length;
-    const ongoing = inquiries.filter((r) => r.ongoingTender === 'Ongoing').length;
-    const tender = inquiries.filter((r) => r.ongoingTender === 'Tender').length;
-    const withPo = inquiries.filter((r) => r.poNo).length;
+    const counts: Record<InquiryWorkflowStatus, number> = {
+      in_preparation: 0,
+      delay: 0,
+      sent: 0,
+      po_received: 0,
+    };
+    for (const row of inquiries) {
+      counts[getInquiryWorkflowStatus(row, workflowClock)] += 1;
+    }
     const totalQuoted = inquiries.reduce((sum, r) => sum + (r.quotationAmount ?? 0), 0);
-    return { total, ongoing, tender, withPo, totalQuoted };
-  }, [inquiries]);
+    return { counts, total: inquiries.length, totalQuoted };
+  }, [inquiries, workflowClock]);
+
+  const formWorkflowMeta = useMemo(() => {
+    const key = getInquiryWorkflowStatus(
+      {
+        inquiryReceivedDate: form.inquiryReceivedDate || null,
+        quotationSubmittedDate: form.quotationSubmittedDate || null,
+        poNo: form.poNo || null,
+        poReceivedDate: form.poReceivedDate || null,
+      },
+      workflowClock
+    );
+    return INQUIRY_WORKFLOW_META[key];
+  }, [form.inquiryReceivedDate, form.quotationSubmittedDate, form.poNo, form.poReceivedDate, workflowClock]);
 
   const openCreate = () => {
     setEditingId(null);
@@ -257,7 +287,7 @@ const Orders = () => {
   };
 
   const renderInquiryCard = (row: Inquiry) => {
-    const status = inquiryStatus(row);
+    const status = inquiryStatus(row, workflowClock);
     const expanded = expandedId === row.id;
     const catClass = categoryStyle[row.category ?? 'LV'] ?? categoryStyle.LV;
 
@@ -434,18 +464,27 @@ const Orders = () => {
           </div>
         )}
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          {[
-            { label: 'Total inquiries', value: stats.total, tone: 'bg-white border-slate-200' },
-            { label: 'Ongoing', value: stats.ongoing, tone: 'bg-blue-50 border-blue-100' },
-            { label: 'Tender', value: stats.tender, tone: 'bg-violet-50 border-violet-100' },
-            { label: 'PO received', value: stats.withPo, tone: 'bg-green-50 border-green-100' },
-          ].map((s) => (
-            <div key={s.label} className={`rounded-xl border p-4 ${s.tone}`}>
-              <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">{s.label}</p>
-              <p className="text-2xl font-bold text-slate-900 mt-1">{s.value}</p>
-            </div>
-          ))}
+        <div>
+          <p className="text-xs text-slate-500 mb-2">{INQUIRY_WORKFLOW_AUTO_HINT}</p>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {INQUIRY_WORKFLOW_ORDER.map((key) => {
+            const meta = INQUIRY_WORKFLOW_META[key];
+            const active = statusFilter === meta.filter;
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setStatusFilter(active ? 'all' : meta.filter)}
+                className={`rounded-xl border p-4 text-left transition-all ${meta.tone} ${
+                  active ? 'ring-2 ring-blue-500 ring-offset-1' : 'hover:shadow-sm'
+                }`}
+              >
+                <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">{meta.label}</p>
+                <p className="text-2xl font-bold text-slate-900 mt-1">{stats.counts[key]}</p>
+              </button>
+            );
+          })}
+          </div>
         </div>
 
         <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 shadow-sm">
@@ -478,10 +517,10 @@ const Orders = () => {
                 className="text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white text-slate-700"
               >
                 <option value="all">All statuses</option>
-                <option value="ongoing">Ongoing only</option>
-                <option value="tender">Tender only</option>
-                <option value="quoted">Quoted (no PO)</option>
-                <option value="po">PO received</option>
+                <option value="in_preparation">In Preparation</option>
+                <option value="delay">Delay</option>
+                <option value="sent">Sent</option>
+                <option value="po_received">PO Received</option>
               </select>
               <div className="flex rounded-lg border border-slate-200 overflow-hidden ml-auto">
                 <button
@@ -559,7 +598,7 @@ const Orders = () => {
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {filtered.map((row) => {
-                    const status = inquiryStatus(row);
+                    const status = inquiryStatus(row, workflowClock);
                     return (
                       <tr key={row.id} className="hover:bg-slate-50/80">
                         <td className="px-4 py-3 font-bold text-slate-900">{row.serialNo}</td>
@@ -618,11 +657,20 @@ const Orders = () => {
               exit={{ scale: 0.96, opacity: 0 }}
               className="bg-white rounded-xl w-full max-w-4xl max-h-[92vh] overflow-hidden border border-slate-200 shadow-2xl flex flex-col"
             >
-              <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center shrink-0">
-                <h3 className="text-lg font-bold text-slate-900">
-                  {editingId ? 'Edit Inquiry' : 'New Inquiry'}
-                </h3>
-                <button type="button" onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-700">
+              <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-start gap-4 shrink-0">
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900">
+                    {editingId ? 'Edit Inquiry' : 'New Inquiry'}
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Auto status:{' '}
+                    <span className={`inline-flex text-[10px] font-semibold px-2 py-0.5 rounded border ${formWorkflowMeta.className}`}>
+                      {formWorkflowMeta.label}
+                    </span>
+                    <span className="text-slate-400"> — updates when you save dates below</span>
+                  </p>
+                </div>
+                <button type="button" onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-700 shrink-0">
                   <X size={22} />
                 </button>
               </div>
