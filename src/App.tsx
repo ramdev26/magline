@@ -8,6 +8,7 @@ import Orders from './components/Orders';
 import SalesTeam from './components/SalesTeam';
 import Login from './components/Login';
 import Users from './components/Users';
+import Engineers from './components/Engineers';
 
 function ProtectedLayout({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -73,6 +74,14 @@ function AppRoutes() {
         element={
           <ProtectedLayout>
             <Users />
+          </ProtectedLayout>
+        }
+      />
+      <Route
+        path="/engineers"
+        element={
+          <ProtectedLayout>
+            <Engineers />
           </ProtectedLayout>
         }
       />

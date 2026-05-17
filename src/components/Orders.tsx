@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Inquiry, Customer, SalesPerson } from '../types';
+import { Link } from 'react-router-dom';
+import { Inquiry, Customer, SalesPerson, Engineer } from '../types';
+import { useAuth } from '../context/AuthContext';
 import { formatLKR } from '../utils/currency';
 import { emptyInquiryForm, MODE_OF_INQUIRY, ONGOING_TENDER } from '../constants/inquiry';
 import {
@@ -63,6 +65,8 @@ const Orders = () => {
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [salesPersons, setSalesPersons] = useState<SalesPerson[]>([]);
+  const [engineers, setEngineers] = useState<Engineer[]>([]);
+  const { isSuperAdmin } = useAuth();
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
@@ -78,14 +82,16 @@ const Orders = () => {
 
   const loadData = async () => {
     setLoading(true);
-    const [inqRes, custRes, salesRes] = await Promise.all([
+    const [inqRes, custRes, salesRes, engRes] = await Promise.all([
       apiFetch('/api/inquiries'),
       apiFetch('/api/customers'),
       apiFetch('/api/sales'),
+      apiFetch('/api/engineers'),
     ]);
     setInquiries(await inqRes.json());
     setCustomers(await custRes.json());
     setSalesPersons((await salesRes.json()).persons ?? []);
+    setEngineers(await engRes.json());
     setLoading(false);
   };
 
@@ -149,7 +155,7 @@ const Orders = () => {
       document: row.document ?? '',
       salesPersonId: row.salesPersonId,
       quotationRequiredDate: row.quotationRequiredDate ?? '',
-      engineer: row.engineer ?? '',
+      engineerId: row.engineerId,
       quotationNo: row.quotationNo ?? '',
       quotationAmount: row.quotationAmount,
       quotationSubmittedDate: row.quotationSubmittedDate ?? '',
@@ -217,7 +223,7 @@ const Orders = () => {
 
     try {
       const buffer = await file.arrayBuffer();
-      const { payloads, skipped } = parseInquiriesFromExcel(buffer, salesPersons);
+      const { payloads, skipped } = parseInquiriesFromExcel(buffer, salesPersons, engineers);
 
       if (payloads.length === 0) {
         setImportMessage('No valid rows found. Check that "Customer Name" column is filled.');
@@ -689,7 +695,33 @@ const Orders = () => {
                     </div>
                     <div>
                       <label className={labelClass}>Engineer</label>
-                      <input className={inputClass} value={form.engineer ?? ''} onChange={(e) => setForm({ ...form, engineer: e.target.value })} />
+                      <select
+                        className={inputClass}
+                        value={form.engineerId ?? ''}
+                        onChange={(e) => setForm({ ...form, engineerId: e.target.value || null })}
+                      >
+                        <option value="">Select engineer...</option>
+                        {engineers.map((eng) => (
+                          <option key={eng.id} value={eng.id}>
+                            {eng.name}
+                          </option>
+                        ))}
+                      </select>
+                      {engineers.length === 0 && (
+                        <p className="text-xs text-amber-600 mt-1">
+                          No engineers in the list yet.
+                          {isSuperAdmin ? (
+                            <>
+                              {' '}
+                              <Link to="/engineers" className="font-semibold underline">
+                                Add engineers
+                              </Link>
+                            </>
+                          ) : (
+                            ' Ask a super admin to add engineers.'
+                          )}
+                        </p>
+                      )}
                     </div>
                     <div>
                       <label className={labelClass}>Quotation no</label>

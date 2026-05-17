@@ -1,6 +1,5 @@
 import * as XLSX from 'xlsx';
-import type { Inquiry } from '../types';
-import type { SalesPerson } from '../types';
+import type { Engineer, Inquiry, SalesPerson } from '../types';
 
 /** Column headers matching the Magline inquiry register spreadsheet */
 export const EXCEL_HEADERS = [
@@ -140,12 +139,17 @@ export function inquiryToExcelRow(row: Inquiry) {
 
 export function rowToInquiryPayload(
   raw: Record<string, unknown>,
-  salesPersons: SalesPerson[]
+  salesPersons: SalesPerson[],
+  engineers: Engineer[] = []
 ) {
   const row = normalizeRow(raw);
   const salesName = cellString(row['Sales Person']);
   const matchedSales = salesPersons.find(
     (p) => p.name.toLowerCase() === salesName.toLowerCase()
+  );
+  const engineerName = cellString(row['Engineer']);
+  const matchedEngineer = engineers.find(
+    (e) => e.name.toLowerCase() === engineerName.toLowerCase()
   );
 
   const customerName = cellString(row['Customer Name']);
@@ -167,7 +171,8 @@ export function rowToInquiryPayload(
     document: cellString(row['Document']) || null,
     salesPersonId: matchedSales?.id ?? null,
     quotationRequiredDate: excelDateToIso(row['Quotation Required Date']),
-    engineer: cellString(row['Engineer']) || null,
+    engineerId: matchedEngineer?.id ?? null,
+    engineer: engineerName || null,
     quotationNo: cellString(row['Quotation No']) || null,
     quotationAmount: cellNumber(row['Quotation Amount']),
     quotationSubmittedDate: excelDateToIso(row['Quotation Submitted Date']),
@@ -193,7 +198,8 @@ export function exportInquiriesToExcel(inquiries: Inquiry[]) {
 
 export function parseInquiriesFromExcel(
   buffer: ArrayBuffer,
-  salesPersons: SalesPerson[]
+  salesPersons: SalesPerson[],
+  engineers: Engineer[] = []
 ) {
   const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
   const sheetName = workbook.SheetNames[0];
@@ -204,7 +210,7 @@ export function parseInquiriesFromExcel(
   const skipped: number[] = [];
 
   json.forEach((raw, index) => {
-    const payload = rowToInquiryPayload(raw, salesPersons);
+    const payload = rowToInquiryPayload(raw, salesPersons, engineers);
     if (payload) payloads.push(payload);
     else skipped.push(index + 2);
   });

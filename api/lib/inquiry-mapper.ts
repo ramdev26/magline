@@ -14,6 +14,7 @@ export function mapInquiry(
   row: Inquiry & {
     customer?: { name: string } | null;
     salesPerson?: { name: string } | null;
+    engineer?: { name: string } | null;
   }
 ) {
   return {
@@ -31,7 +32,8 @@ export function mapInquiry(
     salesPersonId: row.salesPersonId,
     salesPersonName: row.salesPerson?.name ?? null,
     quotationRequiredDate: formatDate(row.quotationRequiredDate),
-    engineer: row.engineer,
+    engineerId: row.engineerId,
+    engineer: row.engineer?.name ?? null,
     quotationNo: row.quotationNo,
     quotationAmount: toNumber(row.quotationAmount),
     quotationSubmittedDate: formatDate(row.quotationSubmittedDate),
@@ -70,7 +72,7 @@ export function inquiryDataFromBody(body: Record<string, unknown>) {
     document: body.document ? String(body.document) : null,
     salesPersonId: body.salesPersonId ? String(body.salesPersonId) : null,
     quotationRequiredDate: parseOptionalDate(body.quotationRequiredDate),
-    engineer: body.engineer ? String(body.engineer) : null,
+    engineerId: body.engineerId ? String(body.engineerId) : null,
     quotationNo: body.quotationNo ? String(body.quotationNo) : null,
     quotationAmount: parseOptionalDecimal(body.quotationAmount),
     quotationSubmittedDate: parseOptionalDate(body.quotationSubmittedDate),

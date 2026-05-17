@@ -10,6 +10,7 @@ function parseBody(req: ApiRequest) {
 const inquiryInclude = {
   customer: true,
   salesPerson: true,
+  engineer: true,
 } as const;
 
 export async function dashboard(_req: ApiRequest, res: ApiResponse) {
@@ -223,6 +224,30 @@ async function applyCustomerToInquiryData(data: InquiryWriteData) {
   data.contactEmail = customer.email || null;
 }
 
+async function resolveEngineerIdByName(name: string | null | undefined) {
+  const trimmed = name?.trim();
+  if (!trimmed) return null;
+  const engineer = await prisma.engineer.findFirst({
+    where: { name: { equals: trimmed, mode: "insensitive" }, active: true },
+  });
+  return engineer?.id ?? null;
+}
+
+async function applyEngineerToInquiryData(
+  data: InquiryWriteData,
+  body: Record<string, unknown>
+) {
+  if (data.engineerId) {
+    const engineer = await prisma.engineer.findFirst({
+      where: { id: data.engineerId, active: true },
+    });
+    if (!engineer) data.engineerId = null;
+    return;
+  }
+  const legacyName = body.engineer ? String(body.engineer) : null;
+  data.engineerId = await resolveEngineerIdByName(legacyName);
+}
+
 export async function inquiries(req: ApiRequest, res: ApiResponse) {
   if (req.method === "GET") {
     const list = await prisma.inquiry.findMany({
@@ -241,6 +266,7 @@ export async function inquiries(req: ApiRequest, res: ApiResponse) {
     }
 
     await applyCustomerToInquiryData(data);
+    await applyEngineerToInquiryData(data, body);
 
     const created = await prisma.inquiry.create({
       data,
@@ -268,11 +294,13 @@ export async function bulkImportInquiries(req: ApiRequest, res: ApiResponse) {
 
   for (let i = 0; i < items.length; i++) {
     try {
-      const data = inquiryDataFromBody(items[i] as Record<string, unknown>);
+      const rowBody = items[i] as Record<string, unknown>;
+      const data = inquiryDataFromBody(rowBody);
       if (!data.customerName?.trim()) {
         errors.push({ row: i + 1, message: "Customer name is required" });
         continue;
       }
+      await applyEngineerToInquiryData(data, rowBody);
       await prisma.inquiry.create({ data });
       created++;
     } catch (err) {
@@ -296,6 +324,7 @@ export async function updateInquiry(req: ApiRequest, res: ApiResponse, id: strin
   }
 
   await applyCustomerToInquiryData(data);
+  await applyEngineerToInquiryData(data, body);
 
   const updated = await prisma.inquiry.update({
     where: { id },
@@ -515,4 +544,86 @@ export async function sales(req: ApiRequest, res: ApiResponse) {
   }
 
   res.status(405).json({ error: "Method not allowed" });
+}
+
+function mapEngineer(row: { id: string; name: string; active: boolean; createdAt: Date }) {
+  return {
+    id: row.id,
+    name: row.name,
+    active: row.active,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+export async function engineers(req: ApiRequest, res: ApiResponse) {
+  if (req.method === "GET") {
+    const list = await prisma.engineer.findMany({
+      where: { active: true },
+      orderBy: { name: "asc" },
+    });
+    return res.status(200).json(list.map(mapEngineer));
+  }
+
+  res.status(405).json({ error: "Method not allowed" });
+}
+
+export async function createEngineer(req: ApiRequest, res: ApiResponse) {
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  const body = parseBody(req);
+  const name = String(body.name ?? "").trim();
+  if (!name) {
+    return res.status(400).json({ error: "Engineer name is required" });
+  }
+
+  const existing = await prisma.engineer.findFirst({
+    where: { name: { equals: name, mode: "insensitive" } },
+  });
+  if (existing) {
+    if (!existing.active) {
+      const restored = await prisma.engineer.update({
+        where: { id: existing.id },
+        data: { active: true, name },
+      });
+      return res.status(200).json(mapEngineer(restored));
+    }
+    return res.status(409).json({ error: "An engineer with this name already exists" });
+  }
+
+  const created = await prisma.engineer.create({ data: { name } });
+  return res.status(201).json(mapEngineer(created));
+}
+
+export async function listAllEngineers(req: ApiRequest, res: ApiResponse) {
+  if (req.method !== "GET") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  const list = await prisma.engineer.findMany({ orderBy: { name: "asc" } });
+  return res.status(200).json(list.map(mapEngineer));
+}
+
+export async function updateEngineer(req: ApiRequest, res: ApiResponse, id: string) {
+  if (req.method !== "PATCH" && req.method !== "PUT") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  const body = parseBody(req);
+  const data: { name?: string; active?: boolean } = {};
+
+  if (body.name !== undefined) {
+    const name = String(body.name).trim();
+    if (!name) {
+      return res.status(400).json({ error: "Engineer name cannot be empty" });
+    }
+    data.name = name;
+  }
+  if (body.active !== undefined) {
+    data.active = Boolean(body.active);
+  }
+
+  const updated = await prisma.engineer.update({ where: { id }, data });
+  return res.status(200).json(mapEngineer(updated));
 }

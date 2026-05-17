@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Users, ShoppingCart, Briefcase, UserCog, LogOut } from 'lucide-react';
+import { LayoutDashboard, Users, ShoppingCart, Briefcase, UserCog, HardHat, LogOut } from 'lucide-react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
@@ -12,7 +12,12 @@ const Sidebar = () => {
     { to: '/customers', icon: Users, label: 'Customers' },
     { to: '/orders', icon: ShoppingCart, label: 'Inquiries' },
     { to: '/sales', icon: Briefcase, label: 'Sales Team' },
-    ...(isSuperAdmin ? [{ to: '/users', icon: UserCog, label: 'User access' }] : []),
+    ...(isSuperAdmin
+      ? [
+          { to: '/engineers', icon: HardHat, label: 'Engineers' },
+          { to: '/users', icon: UserCog, label: 'User access' },
+        ]
+      : []),
   ];
 
   const initials = user?.name

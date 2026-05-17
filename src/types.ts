@@ -20,6 +20,13 @@ export interface Customer {
   additionalContacts?: CustomerContact[];
 }
 
+export interface Engineer {
+  id: string;
+  name: string;
+  active: boolean;
+  createdAt?: string;
+}
+
 export interface Inquiry {
   id: string;
   serialNo: number;
@@ -35,6 +42,7 @@ export interface Inquiry {
   salesPersonId: string | null;
   salesPersonName: string | null;
   quotationRequiredDate: string | null;
+  engineerId: string | null;
   engineer: string | null;
   quotationNo: string | null;
   quotationAmount: number | null;
@@ -49,7 +57,7 @@ export interface Inquiry {
   category: 'LV' | 'CMS' | 'MEP' | null;
 }
 
-export type InquiryFormData = Omit<Inquiry, 'id' | 'serialNo' | 'salesPersonName'>;
+export type InquiryFormData = Omit<Inquiry, 'id' | 'serialNo' | 'salesPersonName' | 'engineer'>;
 
 export type SalesDesignation =
   | 'ASSISTANT_SALES_MANAGER'

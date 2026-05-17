@@ -2,14 +2,19 @@ import type { ApiRequest, ApiResponse } from "./types";
 import { login, logout, me, listUsers, createUser, updateUserHandler } from "./lib/auth-handlers.js";
 import {
   bulkImportInquiries,
+  createEngineer,
   customers,
   dashboard,
+  engineers,
   inquiries,
+  listAllEngineers,
   sales,
   updateCustomer,
+  updateEngineer,
   updateInquiry,
 } from "./lib/handlers.js";
 import { protect } from "./lib/protect.js";
+import { withAuth } from "./lib/with-auth.js";
 import { prisma } from "./lib/prisma.js";
 
 type VercelLikeRequest = {
@@ -101,6 +106,21 @@ export default async function handler(req: VercelLikeRequest, res: ApiResponse) 
     }
     if (route === "sales") {
       return await protect(sales)(apiReq, res);
+    }
+    if (route === "engineers" && req.method === "GET") {
+      return await protect(engineers)(apiReq, res);
+    }
+    if (route === "engineers" && req.method === "POST") {
+      return await withAuth(async (r, re) => createEngineer(r, re), { superAdminOnly: true })(apiReq, res);
+    }
+    if (route === "engineers/all" && req.method === "GET") {
+      return await withAuth(async (r, re) => listAllEngineers(r, re), { superAdminOnly: true })(apiReq, res);
+    }
+    if (segments[0] === "engineers" && segments[1] && segments[1] !== "all") {
+      return await withAuth(
+        async (r, re) => updateEngineer(r, re, segments[1]),
+        { superAdminOnly: true }
+      )(apiReq, res);
     }
     if (route === "orders" || route === "inquiries") {
       return await protect(inquiries)(apiReq, res);
