@@ -38,7 +38,11 @@ const Login = () => {
         className="w-full max-w-md bg-white rounded-2xl shadow-2xl p-8"
       >
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">MAGLINE</h1>
+          <img
+            src="/magline-logo.png"
+            alt="Mag-line Switchboards & Switchgear"
+            className="h-20 w-auto mx-auto mb-3"
+          />
           <p className="text-xs text-slate-500 uppercase tracking-widest mt-1">
             Switchboards (Pvt) Ltd
           </p>

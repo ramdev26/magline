@@ -35,9 +35,20 @@ const Sidebar = () => {
 
   return (
     <aside className="w-64 h-screen bg-slate-900 text-white flex flex-col border-r border-slate-800">
-      <div className="p-6 border-b border-slate-800">
-        <h1 className="text-xl font-bold tracking-tight">MAGLINE</h1>
-        <p className="text-[10px] text-slate-400 uppercase tracking-widest mt-1">Switchboards (Pvt) Ltd</p>
+      <div className="p-5 border-b border-slate-800 flex items-center gap-3">
+        <div className="bg-white rounded-lg p-2 shadow-sm">
+          <img
+            src="/magline-logo.png"
+            alt="Mag-line Switchboards & Switchgear"
+            className="h-10 w-auto block"
+          />
+        </div>
+        <div className="min-w-0">
+          <h1 className="text-sm font-bold tracking-tight leading-tight">Mag-line</h1>
+          <p className="text-[10px] text-slate-400 uppercase tracking-widest mt-0.5">
+            Switchboards (Pvt) Ltd
+          </p>
+        </div>
       </div>
 
       <nav className="flex-1 py-6">
