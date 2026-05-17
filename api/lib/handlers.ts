@@ -21,6 +21,7 @@ export async function dashboard(_req: ApiRequest, res: ApiResponse) {
     }),
     prisma.customer.count(),
     prisma.salesPerson.findMany({
+      where: { status: "ACTIVE" },
       include: { inquiries: true },
       orderBy: { name: "asc" },
     }),
@@ -345,6 +346,37 @@ const SALES_DESIGNATIONS = [
   "JUNIOR_SALES_EXECUTIVE",
 ] as const;
 
+const SALES_SUSPENSION_REASONS = [
+  "INACTIVE",
+  "RESIGNED",
+  "TERMINATED",
+  "ON_LEAVE",
+  "TRANSFERRED",
+  "OTHER",
+] as const;
+
+function parseSalesSuspensionReason(value: unknown) {
+  const raw = String(value ?? "").toUpperCase();
+  if (SALES_SUSPENSION_REASONS.includes(raw as (typeof SALES_SUSPENSION_REASONS)[number])) {
+    return raw as (typeof SALES_SUSPENSION_REASONS)[number];
+  }
+  return null;
+}
+
+function mapMemberStatusFields(row: {
+  status: "ACTIVE" | "SUSPENDED";
+  suspensionReason: (typeof SALES_SUSPENSION_REASONS)[number] | null;
+  suspensionNote: string | null;
+  suspendedAt: Date | null;
+}) {
+  return {
+    status: row.status,
+    suspensionReason: row.suspensionReason,
+    suspensionNote: row.suspensionNote,
+    suspendedAt: row.suspendedAt?.toISOString() ?? null,
+  };
+}
+
 function parseSalesDesignation(value: unknown) {
   const raw = String(value ?? "SALES_EXECUTIVE").toUpperCase();
   if (raw === "SALES_MANAGER") return "ASSISTANT_SALES_MANAGER";
@@ -364,6 +396,10 @@ function mapSalesPerson(
     id: string;
     name: string;
     designation: (typeof SALES_DESIGNATIONS)[number];
+    status: "ACTIVE" | "SUSPENDED";
+    suspensionReason: (typeof SALES_SUSPENSION_REASONS)[number] | null;
+    suspensionNote: string | null;
+    suspendedAt: Date | null;
     managerId: string | null;
     manager?: { name: string } | null;
     inquiries: {
@@ -386,6 +422,7 @@ function mapSalesPerson(
     id: p.id,
     name: p.name,
     designation: p.designation,
+    ...mapMemberStatusFields(p),
     managerId: p.managerId,
     managerName: p.manager?.name ?? null,
     history: p.inquiries.map((o) => String(o.serialNo)),
@@ -447,6 +484,7 @@ function mapHeadRow(
   persons: Parameters<typeof mapSalesPerson>[0][]
 ) {
   const underManagers = mappedManagers.filter((m) => m.headOfSalesId === head.id);
+  const activeManagers = underManagers.filter((m) => m.status === "ACTIVE");
   const allTeamPersons = persons.filter((p) =>
     underManagers.some((m) => m.id === p.managerId)
   );
@@ -455,7 +493,7 @@ function mapHeadRow(
     name: head.name,
     department: head.department,
     createdAt: head.createdAt.toISOString(),
-    managerCount: underManagers.length,
+    managerCount: activeManagers.length,
     totalTeamSales: teamSalesTotal(allTeamPersons),
     salesManagers: underManagers,
   };
@@ -466,6 +504,10 @@ function mapManagerRow(
     id: string;
     name: string;
     department: string;
+    status: "ACTIVE" | "SUSPENDED";
+    suspensionReason: (typeof SALES_SUSPENSION_REASONS)[number] | null;
+    suspensionNote: string | null;
+    suspendedAt: Date | null;
     headOfSalesId: string | null;
     createdAt: Date;
     headOfSales?: { name: string } | null;
@@ -478,6 +520,7 @@ function mapManagerRow(
     id: manager.id,
     name: manager.name,
     department: manager.department,
+    ...mapMemberStatusFields(manager),
     headOfSalesId: manager.headOfSalesId,
     headOfSalesName: manager.headOfSales?.name ?? null,
     createdAt: manager.createdAt.toISOString(),
@@ -490,13 +533,23 @@ function mapManagerRow(
 export async function sales(req: ApiRequest, res: ApiResponse) {
   if (req.method === "GET") {
     const head = await ensureDefaultHeadOfSales();
+    const activeOnlyParam = req.query?.activeOnly;
+    const activeOnly =
+      activeOnlyParam === "1" ||
+      activeOnlyParam === "true" ||
+      (Array.isArray(activeOnlyParam) &&
+        (activeOnlyParam.includes("1") || activeOnlyParam.includes("true")));
+
+    const statusFilter = activeOnly ? { status: "ACTIVE" as const } : {};
 
     const [persons, managers] = await Promise.all([
       prisma.salesPerson.findMany({
+        where: statusFilter,
         include: { inquiries: { orderBy: { serialNo: "desc" } }, manager: true },
         orderBy: { name: "asc" },
       }),
       prisma.salesManager.findMany({
+        where: statusFilter,
         include: { headOfSales: true },
         orderBy: { name: "asc" },
       }),
@@ -544,6 +597,129 @@ export async function sales(req: ApiRequest, res: ApiResponse) {
   }
 
   res.status(405).json({ error: "Method not allowed" });
+}
+
+export async function updateSalesManager(req: ApiRequest, res: ApiResponse, id: string) {
+  if (req.method !== "PATCH" && req.method !== "PUT") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  const body = parseBody(req);
+  const data: {
+    name?: string;
+    department?: string;
+    status?: "ACTIVE" | "SUSPENDED";
+    suspensionReason?: (typeof SALES_SUSPENSION_REASONS)[number] | null;
+    suspensionNote?: string | null;
+    suspendedAt?: Date | null;
+  } = {};
+
+  if (body.name !== undefined) {
+    const name = String(body.name).trim();
+    if (!name) return res.status(400).json({ error: "Name is required" });
+    data.name = name;
+  }
+  if (body.department !== undefined) {
+    data.department = String(body.department).trim();
+  }
+  if (body.status !== undefined) {
+    const status = String(body.status).toUpperCase();
+    if (status !== "ACTIVE" && status !== "SUSPENDED") {
+      return res.status(400).json({ error: "Invalid status" });
+    }
+    data.status = status;
+    if (status === "SUSPENDED") {
+      const reason = parseSalesSuspensionReason(body.suspensionReason);
+      if (!reason) {
+        return res.status(400).json({ error: "Suspension reason is required" });
+      }
+      data.suspensionReason = reason;
+      data.suspensionNote = body.suspensionNote ? String(body.suspensionNote).trim() : null;
+      data.suspendedAt = new Date();
+    } else {
+      data.suspensionReason = null;
+      data.suspensionNote = null;
+      data.suspendedAt = null;
+    }
+  }
+
+  const head = await ensureDefaultHeadOfSales();
+  const updated = await prisma.salesManager.update({
+    where: { id },
+    data: { ...data, headOfSalesId: head.id },
+    include: { headOfSales: true },
+  });
+
+  const persons = await prisma.salesPerson.findMany({
+    include: { inquiries: { orderBy: { serialNo: "desc" } }, manager: true },
+  });
+
+  return res.status(200).json(mapManagerRow(updated, persons));
+}
+
+export async function updateSalesPerson(req: ApiRequest, res: ApiResponse, id: string) {
+  if (req.method !== "PATCH" && req.method !== "PUT") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  const body = parseBody(req);
+  const data: {
+    name?: string;
+    designation?: (typeof SALES_DESIGNATIONS)[number];
+    managerId?: string | null;
+    status?: "ACTIVE" | "SUSPENDED";
+    suspensionReason?: (typeof SALES_SUSPENSION_REASONS)[number] | null;
+    suspensionNote?: string | null;
+    suspendedAt?: Date | null;
+  } = {};
+
+  if (body.name !== undefined) {
+    const name = String(body.name).trim();
+    if (!name) return res.status(400).json({ error: "Name is required" });
+    data.name = name;
+  }
+  if (body.designation !== undefined) {
+    data.designation = parseSalesDesignation(body.designation);
+  }
+  if (body.managerId !== undefined) {
+    data.managerId = body.managerId ? String(body.managerId) : null;
+    if (data.managerId) {
+      const manager = await prisma.salesManager.findFirst({
+        where: { id: data.managerId, status: "ACTIVE" },
+      });
+      if (!manager) {
+        return res.status(400).json({ error: "Selected sales manager is not active" });
+      }
+    }
+  }
+  if (body.status !== undefined) {
+    const status = String(body.status).toUpperCase();
+    if (status !== "ACTIVE" && status !== "SUSPENDED") {
+      return res.status(400).json({ error: "Invalid status" });
+    }
+    data.status = status;
+    if (status === "SUSPENDED") {
+      const reason = parseSalesSuspensionReason(body.suspensionReason);
+      if (!reason) {
+        return res.status(400).json({ error: "Suspension reason is required" });
+      }
+      data.suspensionReason = reason;
+      data.suspensionNote = body.suspensionNote ? String(body.suspensionNote).trim() : null;
+      data.suspendedAt = new Date();
+    } else {
+      data.suspensionReason = null;
+      data.suspensionNote = null;
+      data.suspendedAt = null;
+    }
+  }
+
+  const updated = await prisma.salesPerson.update({
+    where: { id },
+    data,
+    include: { inquiries: { orderBy: { serialNo: "desc" } }, manager: true },
+  });
+
+  return res.status(200).json(mapSalesPerson(updated, true));
 }
 
 function mapEngineer(row: { id: string; name: string; active: boolean; createdAt: Date }) {

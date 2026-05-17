@@ -86,7 +86,7 @@ const Customers = () => {
 
   useEffect(() => {
     loadCustomers();
-    apiFetch('/api/sales')
+    apiFetch('/api/sales?activeOnly=1')
       .then((res) => res.json())
       .then((data) => setSalesPersons(data.persons ?? []))
       .catch(() => {});

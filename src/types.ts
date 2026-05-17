@@ -65,6 +65,16 @@ export type SalesDesignation =
   | 'SALES_EXECUTIVE'
   | 'JUNIOR_SALES_EXECUTIVE';
 
+export type SalesTeamStatus = 'ACTIVE' | 'SUSPENDED';
+
+export type SalesSuspensionReason =
+  | 'INACTIVE'
+  | 'RESIGNED'
+  | 'TERMINATED'
+  | 'ON_LEAVE'
+  | 'TRANSFERRED'
+  | 'OTHER';
+
 export interface HeadOfSales {
   id: string;
   name: string;
@@ -88,6 +98,10 @@ export interface SalesPerson {
   id: string;
   name: string;
   designation: SalesDesignation;
+  status: SalesTeamStatus;
+  suspensionReason?: SalesSuspensionReason | null;
+  suspensionNote?: string | null;
+  suspendedAt?: string | null;
   history: string[];
   managerId?: string | null;
   managerName?: string | null;
@@ -99,6 +113,10 @@ export interface SalesManager {
   id: string;
   name: string;
   department: string;
+  status: SalesTeamStatus;
+  suspensionReason?: SalesSuspensionReason | null;
+  suspensionNote?: string | null;
+  suspendedAt?: string | null;
   headOfSalesId?: string | null;
   headOfSalesName?: string | null;
   createdAt?: string;

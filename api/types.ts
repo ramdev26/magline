@@ -2,6 +2,7 @@ export type ApiRequest = {
   method?: string;
   body?: Record<string, unknown>;
   headers?: Record<string, string | string[] | undefined>;
+  query?: Record<string, string | string[] | undefined>;
 };
 
 export type ApiResponse = {

@@ -1,4 +1,4 @@
-import type { SalesDesignation } from '../types';
+import type { SalesDesignation, SalesSuspensionReason, SalesTeamStatus } from '../types';
 
 /** Single Head of Sales for the organisation (not addable via UI). */
 export const DEFAULT_HEAD_OF_SALES_NAME = 'Lucky Gamage';
@@ -18,3 +18,25 @@ export const DESIGNATION_LABELS: Record<SalesDesignation, string> = {
   SALES_EXECUTIVE: 'Sales Executive',
   JUNIOR_SALES_EXECUTIVE: 'Junior Sales Executive',
 };
+
+export const SUSPENSION_REASONS: SalesSuspensionReason[] = [
+  'INACTIVE',
+  'RESIGNED',
+  'TERMINATED',
+  'ON_LEAVE',
+  'TRANSFERRED',
+  'OTHER',
+];
+
+export const SUSPENSION_REASON_LABELS: Record<SalesSuspensionReason, string> = {
+  INACTIVE: 'Inactive',
+  RESIGNED: 'Resigned',
+  TERMINATED: 'Terminated',
+  ON_LEAVE: 'On leave',
+  TRANSFERRED: 'Transferred',
+  OTHER: 'Other',
+};
+
+export function isActiveMember(member: { status?: SalesTeamStatus }) {
+  return (member.status ?? 'ACTIVE') === 'ACTIVE';
+}

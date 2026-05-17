@@ -33,6 +33,20 @@ enum SalesDesignation {
   JUNIOR_SALES_EXECUTIVE
 }
 
+enum SalesTeamStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum SalesSuspensionReason {
+  INACTIVE
+  RESIGNED
+  TERMINATED
+  ON_LEAVE
+  TRANSFERRED
+  OTHER
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -79,24 +93,32 @@ model HeadOfSales {
 }
 
 model SalesManager {
-  id            String        @id @default(cuid())
-  name          String
-  department    String
-  headOfSalesId String?
-  headOfSales   HeadOfSales?  @relation(fields: [headOfSalesId], references: [id], onDelete: SetNull)
-  createdAt     DateTime      @default(now())
-  salesPersons  SalesPerson[]
+  id                String                 @id @default(cuid())
+  name              String
+  department        String
+  status            SalesTeamStatus        @default(ACTIVE)
+  suspensionReason  SalesSuspensionReason?
+  suspensionNote    String?
+  suspendedAt       DateTime?
+  headOfSalesId     String?
+  headOfSales       HeadOfSales?           @relation(fields: [headOfSalesId], references: [id], onDelete: SetNull)
+  createdAt         DateTime               @default(now())
+  salesPersons      SalesPerson[]
 }
 
 model SalesPerson {
-  id          String           @id @default(cuid())
-  name        String
-  designation SalesDesignation @default(SALES_EXECUTIVE)
-  managerId   String?
-  manager     SalesManager? @relation(fields: [managerId], references: [id], onDelete: SetNull)
-  createdAt   DateTime      @default(now())
-  inquiries   Inquiry[]
-  customers   Customer[]
+  id               String                 @id @default(cuid())
+  name             String
+  designation      SalesDesignation       @default(SALES_EXECUTIVE)
+  status           SalesTeamStatus        @default(ACTIVE)
+  suspensionReason SalesSuspensionReason?
+  suspensionNote   String?
+  suspendedAt      DateTime?
+  managerId        String?
+  manager          SalesManager?          @relation(fields: [managerId], references: [id], onDelete: SetNull)
+  createdAt        DateTime               @default(now())
+  inquiries        Inquiry[]
+  customers        Customer[]
 }
 
 model Engineer {

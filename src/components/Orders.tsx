@@ -85,7 +85,7 @@ const Orders = () => {
     const [inqRes, custRes, salesRes, engRes] = await Promise.all([
       apiFetch('/api/inquiries'),
       apiFetch('/api/customers'),
-      apiFetch('/api/sales'),
+      apiFetch('/api/sales?activeOnly=1'),
       apiFetch('/api/engineers'),
     ]);
     setInquiries(await inqRes.json());

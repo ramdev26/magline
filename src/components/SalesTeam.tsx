@@ -4,7 +4,9 @@ import { formatLKR } from '../utils/currency';
 import {
   DEFAULT_HEAD_OF_SALES_NAME,
   DESIGNATION_LABELS,
+  isActiveMember,
   SALES_DESIGNATIONS,
+  SUSPENSION_REASON_LABELS,
 } from '../constants/sales';
 import {
   Briefcase,
@@ -16,9 +18,12 @@ import {
   Users,
   ChevronRight,
   Crown,
+  Pencil,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { apiFetch } from '../lib/api';
+import { useAuth } from '../context/AuthContext';
+import EditSalesMemberModal, { EditSalesTarget } from './EditSalesMemberModal';
 
 type TeamData = {
   persons: SalesPerson[];
@@ -35,21 +40,43 @@ const emptyForm = () => ({
   managerId: '',
 });
 
+function MemberStatusBadge({ member }: { member: SalesPerson | SalesManager }) {
+  if (member.status === 'ACTIVE') return null;
+  return (
+    <span className="inline-flex mt-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-amber-50 text-amber-800 ring-1 ring-amber-200">
+      Suspended
+      {member.suspensionReason ? ` · ${SUSPENSION_REASON_LABELS[member.suspensionReason]}` : ''}
+    </span>
+  );
+}
+
 const inputClass =
   'w-full border border-slate-200 rounded-lg p-3 text-sm focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none';
 
-const PersonCard: React.FC<{ person: SalesPerson }> = ({ person }) => (
-  <div className="bg-white p-8 rounded-lg border border-slate-200 shadow-sm">
-    <div className="flex justify-between items-start mb-4 gap-4">
+const PersonCard: React.FC<{
+  person: SalesPerson;
+  isSuperAdmin: boolean;
+  onEdit?: () => void;
+}> = ({ person, isSuperAdmin, onEdit }) => (
+  <div
+    className={`bg-white p-8 rounded-lg border shadow-sm relative ${
+      person.status === 'SUSPENDED' ? 'border-amber-200 opacity-85' : 'border-slate-200'
+    }`}
+  >
+    {isSuperAdmin && onEdit && (
+      <button type="button" onClick={onEdit} className="absolute top-4 right-4 p-2 rounded-lg bg-slate-100 text-slate-600 hover:bg-blue-50 hover:text-blue-700" title="Edit">
+        <Pencil size={16} />
+      </button>
+    )}
+    <div className="flex justify-between items-start mb-4 gap-4 pr-10">
       <div>
         <h4 className="text-xl font-bold text-slate-900 mb-1">{person.name}</h4>
-        <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-blue-50 text-blue-700 ring-1 ring-blue-100">
+        <MemberStatusBadge member={person} />
+        <span className="inline-flex mt-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-blue-50 text-blue-700 ring-1 ring-blue-100">
           {DESIGNATION_LABELS[person.designation]}
         </span>
         {person.managerName && (
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-2">
-            Reports to {person.managerName}
-          </p>
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-2">Reports to {person.managerName}</p>
         )}
       </div>
       <div className="text-right shrink-0">
@@ -66,17 +93,11 @@ const PersonCard: React.FC<{ person: SalesPerson }> = ({ person }) => (
         <p className="text-sm text-slate-400">No inquiries assigned yet.</p>
       ) : (
         person.history.slice(0, 5).map((serialNo) => (
-          <div
-            key={serialNo}
-            className="flex justify-between items-center bg-slate-50 p-3 rounded-md border border-slate-100"
-          >
+          <div key={serialNo} className="flex justify-between items-center bg-slate-50 p-3 rounded-md border border-slate-100">
             <span className="text-sm font-medium text-slate-700 flex items-center gap-2">
-              <ShoppingBag size={14} className="text-slate-400" />
-              Inquiry #{serialNo}
+              <ShoppingBag size={14} className="text-slate-400" /> Inquiry #{serialNo}
             </span>
-            <span className="text-[10px] font-bold text-green-600 uppercase bg-green-50 px-2 py-0.5 rounded">
-              Logged
-            </span>
+            <span className="text-[10px] font-bold text-green-600 uppercase bg-green-50 px-2 py-0.5 rounded">Logged</span>
           </div>
         ))
       )}
@@ -116,9 +137,15 @@ function InquiryList({ inquiries }: { inquiries: SalesPerson['inquiries'] }) {
 function ManagerDetailModal({
   manager,
   onClose,
+  isSuperAdmin,
+  onEditManager,
+  onEditPerson,
 }: {
   manager: SalesManager;
   onClose: () => void;
+  isSuperAdmin: boolean;
+  onEditManager: () => void;
+  onEditPerson: (person: SalesPerson) => void;
 }) {
   return (
     <motion.div
@@ -140,6 +167,7 @@ function ManagerDetailModal({
             <div>
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Sales Manager</p>
               <h3 className="text-2xl font-bold">{manager.name}</h3>
+              <MemberStatusBadge member={manager} />
               <div className="flex flex-wrap gap-4 mt-3 text-sm text-slate-300">
                 <span className="flex items-center gap-1.5">
                   <Briefcase size={14} /> {manager.department}
@@ -157,9 +185,21 @@ function ManagerDetailModal({
                 </span>
               </div>
             </div>
-            <button type="button" onClick={onClose} className="text-slate-400 hover:text-white">
-              <X size={22} />
-            </button>
+            <div className="flex items-center gap-2 shrink-0">
+              {isSuperAdmin && (
+                <button
+                  type="button"
+                  onClick={onEditManager}
+                  className="p-2 rounded-lg bg-white/10 text-white hover:bg-white/20"
+                  title="Edit manager"
+                >
+                  <Pencil size={18} />
+                </button>
+              )}
+              <button type="button" onClick={onClose} className="text-slate-400 hover:text-white">
+                <X size={22} />
+              </button>
+            </div>
           </div>
         </div>
         <div className="overflow-y-auto p-6 space-y-6 flex-1">
@@ -171,12 +211,25 @@ function ManagerDetailModal({
                 <div className="bg-slate-50 px-4 py-3 flex flex-wrap justify-between gap-3 border-b border-slate-100">
                   <div>
                     <h4 className="font-bold text-slate-900">{person.name}</h4>
-                    <span className="text-[10px] font-bold uppercase text-blue-600">
+                    <MemberStatusBadge member={person} />
+                    <span className="text-[10px] font-bold uppercase text-blue-600 block mt-1">
                       {DESIGNATION_LABELS[person.designation]}
                     </span>
                   </div>
-                  <div className="text-right">
-                    <p className="text-sm font-bold text-slate-900">{formatLKR(person.totalSales ?? 0)}</p>
+                  <div className="flex items-start gap-2">
+                    <div className="text-right">
+                      <p className="text-sm font-bold text-slate-900">{formatLKR(person.totalSales ?? 0)}</p>
+                    </div>
+                    {isSuperAdmin && (
+                      <button
+                        type="button"
+                        onClick={() => onEditPerson(person)}
+                        className="p-1.5 rounded-md text-slate-500 hover:bg-slate-200"
+                        title="Edit"
+                      >
+                        <Pencil size={14} />
+                      </button>
+                    )}
                   </div>
                 </div>
                 <div className="p-4">
@@ -191,6 +244,7 @@ function ManagerDetailModal({
     </motion.div>
   );
 }
+
 
 function HeadDetailModal({
   head,
@@ -273,10 +327,12 @@ function HeadDetailModal({
 }
 
 const SalesTeam = () => {
+  const { isSuperAdmin } = useAuth();
   const [team, setTeam] = useState<TeamData | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [selectedManager, setSelectedManager] = useState<SalesManager | null>(null);
   const [selectedHead, setSelectedHead] = useState<HeadOfSales | null>(null);
+  const [editTarget, setEditTarget] = useState<EditSalesTarget | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [addType, setAddType] = useState<AddType>('person');
   const [saving, setSaving] = useState(false);
@@ -330,8 +386,12 @@ const SalesTeam = () => {
     return <div className="p-8 text-sm text-slate-400 italic">Loading sales team...</div>;
   }
 
-  const unassignedPersons = team.persons.filter((p) => !p.managerId);
-  const teamTotal = team.persons.length + team.managers.length + 1;
+  const activeManagers = team.managers.filter(isActiveMember);
+  const suspendedManagers = team.managers.filter((m) => !isActiveMember(m));
+  const activePersons = team.persons.filter(isActiveMember);
+  const suspendedPersons = team.persons.filter((p) => !isActiveMember(p));
+  const unassignedPersons = activePersons.filter((p) => !p.managerId);
+  const teamTotal = activePersons.length + activeManagers.length + 1;
   const head = team.head;
 
   return (
@@ -383,22 +443,22 @@ const SalesTeam = () => {
             <ShieldCheck size={16} />
             <h3 className="text-xs font-bold uppercase tracking-widest">Sales Managers</h3>
           </div>
-          {team.managers.length === 0 ? (
+          {activeManagers.length === 0 ? (
             <p className="text-sm text-slate-400">No sales managers yet. New managers report to {DEFAULT_HEAD_OF_SALES_NAME}.</p>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {team.managers.map((manager) => (
+              {activeManagers.map((manager) => (
+                <div key={manager.id} className="relative">
                 <button
-                  key={manager.id}
                   type="button"
                   onClick={() => setSelectedManager(manager)}
-                  className="bg-slate-900 text-white p-6 rounded-lg shadow-lg text-left hover:bg-slate-800 transition-colors group"
+                  className="w-full bg-slate-900 text-white p-6 rounded-lg shadow-lg text-left hover:bg-slate-800 transition-colors group"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Sales Manager</p>
                     <ChevronRight size={16} className="text-slate-500 group-hover:text-white shrink-0" />
                   </div>
-                  <h4 className="text-xl font-bold mb-2 mt-1">{manager.name}</h4>
+                  <h4 className="text-xl font-bold mb-2 mt-1 pr-8">{manager.name}</h4>
                   <p className="text-[10px] font-semibold text-indigo-300 uppercase tracking-wide mb-2 flex items-center gap-1">
                     <Crown size={10} /> {manager.headOfSalesName ?? DEFAULT_HEAD_OF_SALES_NAME}
                   </p>
@@ -410,6 +470,17 @@ const SalesTeam = () => {
                     {formatLKR(manager.totalTeamSales ?? 0)}
                   </p>
                 </button>
+                {isSuperAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => setEditTarget({ kind: 'manager', member: manager })}
+                    className="absolute top-3 right-3 p-2 rounded-lg bg-white/10 text-white hover:bg-white/20"
+                    title="Edit manager"
+                  >
+                    <Pencil size={16} />
+                  </button>
+                )}
+                </div>
               ))}
             </div>
           )}
@@ -420,16 +491,51 @@ const SalesTeam = () => {
             <Award size={16} />
             <h3 className="text-xs font-bold uppercase tracking-widest">Sales Executives</h3>
           </div>
-          {team.persons.length === 0 ? (
+          {activePersons.length === 0 ? (
             <p className="text-sm text-slate-400">No sales executives yet.</p>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              {team.persons.map((person) => (
-                <PersonCard key={person.id} person={person} />
+              {activePersons.map((person) => (
+                <PersonCard
+                  key={person.id}
+                  person={person}
+                  isSuperAdmin={isSuperAdmin}
+                  onEdit={isSuperAdmin ? () => setEditTarget({ kind: 'person', member: person }) : undefined}
+                />
               ))}
             </div>
           )}
         </section>
+
+        {isSuperAdmin && (suspendedManagers.length > 0 || suspendedPersons.length > 0) && (
+          <section>
+            <p className="text-xs font-bold text-amber-700 uppercase tracking-widest mb-4">Suspended members</p>
+            <div className="flex flex-wrap gap-2">
+              {suspendedManagers.map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => setEditTarget({ kind: 'manager', member: m })}
+                  className="text-sm bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-amber-900 hover:bg-amber-100"
+                >
+                  {m.name}
+                  {m.suspensionReason ? ` · ${SUSPENSION_REASON_LABELS[m.suspensionReason]}` : ''}
+                </button>
+              ))}
+              {suspendedPersons.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => setEditTarget({ kind: 'person', member: p })}
+                  className="text-sm bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-amber-900 hover:bg-amber-100"
+                >
+                  {p.name} · {DESIGNATION_LABELS[p.designation]}
+                  {p.suspensionReason ? ` · ${SUSPENSION_REASON_LABELS[p.suspensionReason]}` : ''}
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
 
         {unassignedPersons.length > 0 && (
           <section>
@@ -462,7 +568,24 @@ const SalesTeam = () => {
 
       <AnimatePresence>
         {selectedManager && (
-          <ManagerDetailModal manager={selectedManager} onClose={() => setSelectedManager(null)} />
+          <ManagerDetailModal
+            manager={selectedManager}
+            onClose={() => setSelectedManager(null)}
+            isSuperAdmin={isSuperAdmin}
+            onEditManager={() => setEditTarget({ kind: 'manager', member: selectedManager })}
+            onEditPerson={(person) => setEditTarget({ kind: 'person', member: person })}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {editTarget && isSuperAdmin && (
+          <EditSalesMemberModal
+            target={editTarget}
+            activeManagers={activeManagers}
+            onClose={() => setEditTarget(null)}
+            onSaved={loadTeam}
+          />
         )}
       </AnimatePresence>
 
@@ -560,7 +683,7 @@ const SalesTeam = () => {
                         onChange={(e) => setForm({ ...form, managerId: e.target.value })}
                       >
                         <option value="">Unassigned</option>
-                        {team.managers.map((m) => (
+                        {activeManagers.map((m) => (
                           <option key={m.id} value={m.id}>
                             {m.name}
                           </option>

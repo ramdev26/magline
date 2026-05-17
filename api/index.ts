@@ -12,6 +12,8 @@ import {
   updateCustomer,
   updateEngineer,
   updateInquiry,
+  updateSalesManager,
+  updateSalesPerson,
 } from "./lib/handlers.js";
 import { protect } from "./lib/protect.js";
 import { withAuth } from "./lib/with-auth.js";
@@ -57,6 +59,7 @@ function toApiRequest(req: VercelLikeRequest): ApiRequest {
     method: req.method,
     body: parseBody(req.body),
     headers: req.headers,
+    query: req.query,
   };
 }
 
@@ -106,6 +109,18 @@ export default async function handler(req: VercelLikeRequest, res: ApiResponse) 
     }
     if (route === "sales") {
       return await protect(sales)(apiReq, res);
+    }
+    if (segments[0] === "sales" && segments[1] === "managers" && segments[2]) {
+      return await withAuth(
+        async (r, re) => updateSalesManager(r, re, segments[2]),
+        { superAdminOnly: true }
+      )(apiReq, res);
+    }
+    if (segments[0] === "sales" && segments[1] === "persons" && segments[2]) {
+      return await withAuth(
+        async (r, re) => updateSalesPerson(r, re, segments[2]),
+        { superAdminOnly: true }
+      )(apiReq, res);
     }
     if (route === "engineers" && req.method === "GET") {
       return await protect(engineers)(apiReq, res);
