@@ -52,11 +52,20 @@ export interface Inquiry {
 export type InquiryFormData = Omit<Inquiry, 'id' | 'serialNo' | 'salesPersonName'>;
 
 export type SalesDesignation =
-  | 'SALES_MANAGER'
   | 'ASSISTANT_SALES_MANAGER'
   | 'SENIOR_SALES_EXECUTIVE'
   | 'SALES_EXECUTIVE'
   | 'JUNIOR_SALES_EXECUTIVE';
+
+export interface HeadOfSales {
+  id: string;
+  name: string;
+  department: string;
+  createdAt?: string;
+  managerCount?: number;
+  totalTeamSales?: number;
+  salesManagers?: SalesManager[];
+}
 
 export interface SalesInquirySummary {
   id: string;
@@ -82,8 +91,11 @@ export interface SalesManager {
   id: string;
   name: string;
   department: string;
+  headOfSalesId?: string | null;
+  headOfSalesName?: string | null;
   createdAt?: string;
   teamSize?: number;
+  totalTeamSales?: number;
   salesPersons?: SalesPerson[];
 }
 

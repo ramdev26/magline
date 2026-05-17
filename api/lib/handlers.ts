@@ -310,7 +310,6 @@ export async function updateInquiry(req: ApiRequest, res: ApiResponse, id: strin
 export const orders = inquiries;
 
 const SALES_DESIGNATIONS = [
-  "SALES_MANAGER",
   "ASSISTANT_SALES_MANAGER",
   "SENIOR_SALES_EXECUTIVE",
   "SALES_EXECUTIVE",
@@ -318,9 +317,10 @@ const SALES_DESIGNATIONS = [
 ] as const;
 
 function parseSalesDesignation(value: unknown) {
-  const designation = String(value ?? "SALES_EXECUTIVE").toUpperCase();
-  if (SALES_DESIGNATIONS.includes(designation as (typeof SALES_DESIGNATIONS)[number])) {
-    return designation as (typeof SALES_DESIGNATIONS)[number];
+  const raw = String(value ?? "SALES_EXECUTIVE").toUpperCase();
+  if (raw === "SALES_MANAGER") return "ASSISTANT_SALES_MANAGER";
+  if (SALES_DESIGNATIONS.includes(raw as (typeof SALES_DESIGNATIONS)[number])) {
+    return raw as (typeof SALES_DESIGNATIONS)[number];
   }
   return "SALES_EXECUTIVE";
 }
@@ -374,29 +374,75 @@ function mapSalesPerson(
   };
 }
 
+function teamSalesTotal(
+  persons: { inquiries: { quotationAmount: Prisma.Decimal | number | null }[] }[]
+) {
+  return persons.reduce(
+    (sum, person) =>
+      sum +
+      person.inquiries.reduce((acc, row) => acc + (toNumber(row.quotationAmount) ?? 0), 0),
+    0
+  );
+}
+
+function mapManagerRow(
+  manager: {
+    id: string;
+    name: string;
+    department: string;
+    headOfSalesId: string | null;
+    createdAt: Date;
+    headOfSales?: { name: string } | null;
+  },
+  persons: Parameters<typeof mapSalesPerson>[0][]
+) {
+  const team = persons.filter((p) => p.managerId === manager.id);
+  const salesPersons = team.map((p) => mapSalesPerson(p, true));
+  return {
+    id: manager.id,
+    name: manager.name,
+    department: manager.department,
+    headOfSalesId: manager.headOfSalesId,
+    headOfSalesName: manager.headOfSales?.name ?? null,
+    createdAt: manager.createdAt.toISOString(),
+    teamSize: team.length,
+    totalTeamSales: teamSalesTotal(team),
+    salesPersons,
+  };
+}
+
 export async function sales(req: ApiRequest, res: ApiResponse) {
   if (req.method === "GET") {
-    const [persons, managers] = await Promise.all([
+    const [persons, managers, heads] = await Promise.all([
       prisma.salesPerson.findMany({
         include: { inquiries: { orderBy: { serialNo: "desc" } }, manager: true },
         orderBy: { name: "asc" },
       }),
-      prisma.salesManager.findMany({ orderBy: { name: "asc" } }),
+      prisma.salesManager.findMany({
+        include: { headOfSales: true },
+        orderBy: { name: "asc" },
+      }),
+      prisma.headOfSales.findMany({ orderBy: { name: "asc" } }),
     ]);
 
-    const mappedPersons = persons.map((p) => mapSalesPerson(p));
+    const mappedManagers = managers.map((manager) => mapManagerRow(manager, persons));
 
     return res.status(200).json({
-      persons: mappedPersons,
-      managers: managers.map((manager) => {
-        const team = persons.filter((p) => p.managerId === manager.id);
+      persons: persons.map((p) => mapSalesPerson(p)),
+      managers: mappedManagers,
+      heads: heads.map((head) => {
+        const underManagers = mappedManagers.filter((m) => m.headOfSalesId === head.id);
+        const allTeamPersons = persons.filter((p) =>
+          underManagers.some((m) => m.id === p.managerId)
+        );
         return {
-          id: manager.id,
-          name: manager.name,
-          department: manager.department,
-          createdAt: manager.createdAt.toISOString(),
-          teamSize: team.length,
-          salesPersons: team.map((p) => mapSalesPerson(p, true)),
+          id: head.id,
+          name: head.name,
+          department: head.department,
+          createdAt: head.createdAt.toISOString(),
+          managerCount: underManagers.length,
+          totalTeamSales: teamSalesTotal(allTeamPersons),
+          salesManagers: underManagers,
         };
       }),
     });
@@ -406,14 +452,26 @@ export async function sales(req: ApiRequest, res: ApiResponse) {
     const body = parseBody(req);
     const type = String(body.type ?? "person");
 
-    if (type === "manager") {
-      const created = await prisma.salesManager.create({
+    if (type === "head") {
+      const created = await prisma.headOfSales.create({
         data: {
           name: String(body.name ?? ""),
           department: String(body.department ?? ""),
         },
       });
       return res.status(201).json(created);
+    }
+
+    if (type === "manager") {
+      const created = await prisma.salesManager.create({
+        data: {
+          name: String(body.name ?? ""),
+          department: String(body.department ?? ""),
+          headOfSalesId: body.headOfSalesId ? String(body.headOfSalesId) : null,
+        },
+        include: { headOfSales: true },
+      });
+      return res.status(201).json(mapManagerRow(created, []));
     }
 
     const created = await prisma.salesPerson.create({

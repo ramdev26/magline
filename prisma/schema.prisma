@@ -27,7 +27,6 @@ enum CustomerStatus {
 }
 
 enum SalesDesignation {
-  SALES_MANAGER
   ASSISTANT_SALES_MANAGER
   SENIOR_SALES_EXECUTIVE
   SALES_EXECUTIVE
@@ -71,12 +70,22 @@ model CustomerContact {
   createdAt  DateTime @default(now())
 }
 
+model HeadOfSales {
+  id            String         @id @default(cuid())
+  name          String
+  department    String         @default("")
+  createdAt     DateTime       @default(now())
+  salesManagers SalesManager[]
+}
+
 model SalesManager {
-  id           String        @id @default(cuid())
-  name         String
-  department   String
-  createdAt    DateTime      @default(now())
-  salesPersons SalesPerson[]
+  id            String        @id @default(cuid())
+  name          String
+  department    String
+  headOfSalesId String?
+  headOfSales   HeadOfSales?  @relation(fields: [headOfSalesId], references: [id], onDelete: SetNull)
+  createdAt     DateTime      @default(now())
+  salesPersons  SalesPerson[]
 }
 
 model SalesPerson {
