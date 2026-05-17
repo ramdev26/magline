@@ -136,11 +136,15 @@ const Orders = () => {
 
   const openEdit = (row: Inquiry) => {
     setEditingId(row.id);
+    const matchedCustomer =
+      row.customerId != null
+        ? customers.find((c) => c.id === row.customerId)
+        : customers.find((c) => c.name.toLowerCase() === row.customerName.toLowerCase());
     setForm({
       inquiryReceivedDate: row.inquiryReceivedDate ?? '',
       modeOfInquiry: row.modeOfInquiry ?? '',
-      customerId: row.customerId,
-      customerName: row.customerName,
+      customerId: matchedCustomer?.id ?? row.customerId,
+      customerName: matchedCustomer?.name ?? row.customerName,
       contactDetails: row.contactDetails ?? '',
       contactPhone: row.contactPhone ?? '',
       contactEmail: row.contactEmail ?? '',
@@ -179,7 +183,7 @@ const Orders = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.customerName.trim()) return;
+    if (!form.customerId) return;
     setSaving(true);
 
     const payload = {
@@ -653,19 +657,16 @@ const Orders = () => {
                   <h4 className="text-sm font-bold text-slate-800 border-b pb-2">Customer & project</h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label className={labelClass}>Link existing customer (optional)</label>
+                      <label className={labelClass}>Customer *</label>
                       <select
+                        required
                         className={inputClass}
                         value={form.customerId ?? ''}
-                        onChange={(e) => (e.target.value ? onCustomerPick(e.target.value) : setForm({ ...form, customerId: null }))}
+                        onChange={(e) => onCustomerPick(e.target.value)}
                       >
-                        <option value="">— Manual entry —</option>
+                        <option value="" disabled>Select customer...</option>
                         {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                       </select>
-                    </div>
-                    <div>
-                      <label className={labelClass}>Customer name *</label>
-                      <input required className={inputClass} value={form.customerName} onChange={(e) => setForm({ ...form, customerName: e.target.value })} />
                     </div>
                     <div className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50/80 p-4">
                       <p className="text-xs font-bold text-slate-800 mb-3">Contact details</p>
