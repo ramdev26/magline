@@ -145,9 +145,6 @@ const Orders = () => {
       modeOfInquiry: row.modeOfInquiry ?? '',
       customerId: matchedCustomer?.id ?? row.customerId,
       customerName: matchedCustomer?.name ?? row.customerName,
-      contactDetails: row.contactDetails ?? '',
-      contactPhone: row.contactPhone ?? '',
-      contactEmail: row.contactEmail ?? '',
       projectName: row.projectName ?? '',
       document: row.document ?? '',
       salesPersonId: row.salesPersonId,
@@ -175,9 +172,6 @@ const Orders = () => {
       ...prev,
       customerId,
       customerName: customer.name,
-      contactDetails: customer.contact,
-      contactPhone: customer.phone,
-      contactEmail: customer.email,
     }));
   };
 
@@ -667,23 +661,6 @@ const Orders = () => {
                         <option value="" disabled>Select customer...</option>
                         {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                       </select>
-                    </div>
-                    <div className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50/80 p-4">
-                      <p className="text-xs font-bold text-slate-800 mb-3">Contact details</p>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div>
-                          <label className={labelClass}>Contact person</label>
-                          <input className={inputClass} placeholder="Name" value={form.contactDetails ?? ''} onChange={(e) => setForm({ ...form, contactDetails: e.target.value })} />
-                        </div>
-                        <div>
-                          <label className={labelClass}>Phone number</label>
-                          <input type="tel" className={inputClass} placeholder="+94 77 123 4567" value={form.contactPhone ?? ''} onChange={(e) => setForm({ ...form, contactPhone: e.target.value })} />
-                        </div>
-                        <div>
-                          <label className={labelClass}>Email address</label>
-                          <input type="email" className={inputClass} placeholder="name@company.com" value={form.contactEmail ?? ''} onChange={(e) => setForm({ ...form, contactEmail: e.target.value })} />
-                        </div>
-                      </div>
                     </div>
                     <div>
                       <label className={labelClass}>Project name</label>

@@ -26,6 +26,14 @@ enum CustomerStatus {
   INACTIVE
 }
 
+enum SalesDesignation {
+  SALES_MANAGER
+  ASSISTANT_SALES_MANAGER
+  SENIOR_SALES_EXECUTIVE
+  SALES_EXECUTIVE
+  JUNIOR_SALES_EXECUTIVE
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -72,9 +80,9 @@ model SalesManager {
 }
 
 model SalesPerson {
-  id          String        @id @default(cuid())
+  id          String           @id @default(cuid())
   name        String
-  performance Int           @default(0)
+  designation SalesDesignation @default(SALES_EXECUTIVE)
   managerId   String?
   manager     SalesManager? @relation(fields: [managerId], references: [id], onDelete: SetNull)
   createdAt   DateTime      @default(now())

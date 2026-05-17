@@ -1,6 +1,6 @@
 import type { ApiRequest, ApiResponse } from "../types.js";
 import { prisma } from "./prisma.js";
-import { OrderCategory } from "@prisma/client";
+import { OrderCategory, Prisma } from "@prisma/client";
 import { inquiryDataFromBody, mapInquiry, toNumber } from "./inquiry-mapper.js";
 
 function parseBody(req: ApiRequest) {
@@ -50,15 +50,18 @@ export async function dashboard(_req: ApiRequest, res: ApiResponse) {
     category: row.category,
   }));
 
-  const topSalesPersons = salesPersons.map((person) => ({
-    id: person.id,
-    name: person.name,
-    performance: person.performance,
-    totalSales: person.inquiries.reduce(
-      (acc, row) => acc + (toNumber(row.quotationAmount) ?? 0),
-      0
-    ),
-  }));
+  const topSalesPersons = salesPersons
+    .map((person) => ({
+      id: person.id,
+      name: person.name,
+      designation: person.designation,
+      totalSales: person.inquiries.reduce(
+        (acc, row) => acc + (toNumber(row.quotationAmount) ?? 0),
+        0
+      ),
+    }))
+    .sort((a, b) => b.totalSales - a.totalSales)
+    .slice(0, 8);
 
   res.status(200).json({
     totalSales,
@@ -206,6 +209,20 @@ export async function updateCustomer(req: ApiRequest, res: ApiResponse, id: stri
   return res.status(200).json(mapCustomer(updated));
 }
 
+type InquiryWriteData = ReturnType<typeof inquiryDataFromBody>;
+
+async function applyCustomerToInquiryData(data: InquiryWriteData) {
+  if (!data.customerId) return;
+  const customer = await prisma.customer.findUnique({
+    where: { id: data.customerId },
+  });
+  if (!customer) return;
+  data.customerName = customer.name;
+  data.contactDetails = customer.contact || null;
+  data.contactPhone = customer.phone || null;
+  data.contactEmail = customer.email || null;
+}
+
 export async function inquiries(req: ApiRequest, res: ApiResponse) {
   if (req.method === "GET") {
     const list = await prisma.inquiry.findMany({
@@ -219,29 +236,11 @@ export async function inquiries(req: ApiRequest, res: ApiResponse) {
     const body = parseBody(req);
     const data = inquiryDataFromBody(body);
 
-    if (!data.customerName && !data.customerId) {
-      return res.status(400).json({ error: "Customer name is required" });
+    if (!data.customerId) {
+      return res.status(400).json({ error: "Customer is required" });
     }
 
-    if (data.customerId) {
-      const customer = await prisma.customer.findUnique({
-        where: { id: data.customerId },
-      });
-      if (customer && !data.customerName) {
-        data.customerName = customer.name;
-      }
-      if (customer) {
-        if (!data.contactDetails && customer.contact) {
-          data.contactDetails = customer.contact;
-        }
-        if (!data.contactPhone && customer.phone) {
-          data.contactPhone = customer.phone;
-        }
-        if (!data.contactEmail && customer.email) {
-          data.contactEmail = customer.email;
-        }
-      }
-    }
+    await applyCustomerToInquiryData(data);
 
     const created = await prisma.inquiry.create({
       data,
@@ -292,6 +291,12 @@ export async function updateInquiry(req: ApiRequest, res: ApiResponse, id: strin
   const body = parseBody(req);
   const data = inquiryDataFromBody(body);
 
+  if (!data.customerId) {
+    return res.status(400).json({ error: "Customer is required" });
+  }
+
+  await applyCustomerToInquiryData(data);
+
   const updated = await prisma.inquiry.update({
     where: { id },
     data,
@@ -304,30 +309,96 @@ export async function updateInquiry(req: ApiRequest, res: ApiResponse, id: strin
 /** @deprecated use inquiries */
 export const orders = inquiries;
 
+const SALES_DESIGNATIONS = [
+  "SALES_MANAGER",
+  "ASSISTANT_SALES_MANAGER",
+  "SENIOR_SALES_EXECUTIVE",
+  "SALES_EXECUTIVE",
+  "JUNIOR_SALES_EXECUTIVE",
+] as const;
+
+function parseSalesDesignation(value: unknown) {
+  const designation = String(value ?? "SALES_EXECUTIVE").toUpperCase();
+  if (SALES_DESIGNATIONS.includes(designation as (typeof SALES_DESIGNATIONS)[number])) {
+    return designation as (typeof SALES_DESIGNATIONS)[number];
+  }
+  return "SALES_EXECUTIVE";
+}
+
+function formatDate(value: Date | null | undefined) {
+  if (!value) return null;
+  return value.toISOString().split("T")[0];
+}
+
+function mapSalesPerson(
+  p: {
+    id: string;
+    name: string;
+    designation: (typeof SALES_DESIGNATIONS)[number];
+    managerId: string | null;
+    manager?: { name: string } | null;
+    inquiries: {
+      id: string;
+      serialNo: number;
+      customerName: string;
+      projectName: string | null;
+      quotationAmount: Prisma.Decimal | number | null;
+      inquiryReceivedDate: Date | null;
+    }[];
+  },
+  includeInquiryDetails = false
+) {
+  const totalSales = p.inquiries.reduce(
+    (acc, row) => acc + (toNumber(row.quotationAmount) ?? 0),
+    0
+  );
+
+  return {
+    id: p.id,
+    name: p.name,
+    designation: p.designation,
+    managerId: p.managerId,
+    managerName: p.manager?.name ?? null,
+    history: p.inquiries.map((o) => String(o.serialNo)),
+    totalSales,
+    inquiries: includeInquiryDetails
+      ? p.inquiries.map((row) => ({
+          id: row.id,
+          serialNo: row.serialNo,
+          customerName: row.customerName,
+          projectName: row.projectName,
+          quotationAmount: toNumber(row.quotationAmount),
+          inquiryReceivedDate: formatDate(row.inquiryReceivedDate),
+        }))
+      : undefined,
+  };
+}
+
 export async function sales(req: ApiRequest, res: ApiResponse) {
   if (req.method === "GET") {
     const [persons, managers] = await Promise.all([
       prisma.salesPerson.findMany({
-        include: { inquiries: true, manager: true },
+        include: { inquiries: { orderBy: { serialNo: "desc" } }, manager: true },
         orderBy: { name: "asc" },
       }),
       prisma.salesManager.findMany({ orderBy: { name: "asc" } }),
     ]);
 
+    const mappedPersons = persons.map((p) => mapSalesPerson(p));
+
     return res.status(200).json({
-      persons: persons.map((p) => ({
-        id: p.id,
-        name: p.name,
-        performance: p.performance,
-        managerId: p.managerId,
-        managerName: p.manager?.name ?? null,
-        history: p.inquiries.map((o) => String(o.serialNo)),
-        totalSales: p.inquiries.reduce(
-          (acc, row) => acc + (toNumber(row.quotationAmount) ?? 0),
-          0
-        ),
-      })),
-      managers,
+      persons: mappedPersons,
+      managers: managers.map((manager) => {
+        const team = persons.filter((p) => p.managerId === manager.id);
+        return {
+          id: manager.id,
+          name: manager.name,
+          department: manager.department,
+          createdAt: manager.createdAt.toISOString(),
+          teamSize: team.length,
+          salesPersons: team.map((p) => mapSalesPerson(p, true)),
+        };
+      }),
     });
   }
 
@@ -348,11 +419,12 @@ export async function sales(req: ApiRequest, res: ApiResponse) {
     const created = await prisma.salesPerson.create({
       data: {
         name: String(body.name ?? ""),
-        performance: Number(body.performance ?? 0),
+        designation: parseSalesDesignation(body.designation),
         managerId: body.managerId ? String(body.managerId) : null,
       },
+      include: { inquiries: true, manager: true },
     });
-    return res.status(201).json(created);
+    return res.status(201).json(mapSalesPerson(created));
   }
 
   res.status(405).json({ error: "Method not allowed" });
