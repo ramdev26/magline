@@ -19,6 +19,13 @@ enum UserRole {
   USER
 }
 
+enum CustomerStatus {
+  NEW
+  OLD
+  ACTIVE
+  INACTIVE
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -37,6 +44,9 @@ model Customer {
   email               String
   phone               String
   address             String
+  status              CustomerStatus    @default(NEW)
+  salesPersonId       String?
+  salesPerson         SalesPerson?      @relation(fields: [salesPersonId], references: [id], onDelete: SetNull)
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt
   inquiries           Inquiry[]
@@ -69,6 +79,7 @@ model SalesPerson {
   manager     SalesManager? @relation(fields: [managerId], references: [id], onDelete: SetNull)
   createdAt   DateTime      @default(now())
   inquiries   Inquiry[]
+  customers   Customer[]
 }
 
 model Inquiry {

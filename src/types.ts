@@ -1,3 +1,5 @@
+export type CustomerStatus = 'NEW' | 'OLD' | 'ACTIVE' | 'INACTIVE';
+
 export interface CustomerContact {
   id: string;
   contact: string;
@@ -12,6 +14,9 @@ export interface Customer {
   email: string;
   phone: string;
   address: string;
+  status: CustomerStatus;
+  salesPersonId: string | null;
+  salesPersonName: string | null;
   additionalContacts?: CustomerContact[];
 }
 

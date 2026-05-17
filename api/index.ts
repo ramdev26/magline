@@ -6,6 +6,7 @@ import {
   dashboard,
   inquiries,
   sales,
+  updateCustomer,
   updateInquiry,
 } from "./lib/handlers.js";
 import { protect } from "./lib/protect.js";
@@ -94,6 +95,9 @@ export default async function handler(req: VercelLikeRequest, res: ApiResponse) 
     }
     if (route === "customers") {
       return await protect(customers)(apiReq, res);
+    }
+    if (segments[0] === "customers" && segments[1] && (req.method === "PATCH" || req.method === "PUT")) {
+      return await protect(async (r, re) => updateCustomer(r, re, segments[1]))(apiReq, res);
     }
     if (route === "sales") {
       return await protect(sales)(apiReq, res);

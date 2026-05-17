@@ -2,7 +2,7 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import type { ApiRequest, ApiResponse } from "./api/types";
-import { bulkImportInquiries, dashboard, customers, inquiries, sales, updateInquiry } from "./api/lib/handlers";
+import { bulkImportInquiries, dashboard, customers, inquiries, sales, updateCustomer, updateInquiry } from "./api/lib/handlers";
 import { login, logout, me, listUsers, createUser, updateUserHandler } from "./api/lib/auth-handlers";
 import { protect } from "./api/lib/protect";
 import { prisma } from "./api/lib/prisma";
@@ -69,6 +69,22 @@ async function startServer() {
   app.get("/api/dashboard", wrap(protect(dashboard)));
   app.get("/api/customers", wrap(protect(customers)));
   app.post("/api/customers", wrap(protect(customers)));
+  app.patch("/api/customers/:id", async (req, res) => {
+    try {
+      await protect(async (r, re) => updateCustomer(r, re, req.params.id))(toApiReq(req), res as unknown as ApiResponse);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+  app.put("/api/customers/:id", async (req, res) => {
+    try {
+      await protect(async (r, re) => updateCustomer(r, re, req.params.id))(toApiReq(req), res as unknown as ApiResponse);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
   app.get("/api/inquiries", wrap(protect(inquiries)));
   app.post("/api/inquiries", wrap(protect(inquiries)));
   app.post("/api/inquiries/import", wrap(protect(bulkImportInquiries)));

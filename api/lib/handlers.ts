@@ -70,8 +70,23 @@ export async function dashboard(_req: ApiRequest, res: ApiResponse) {
   });
 }
 
+const CUSTOMER_STATUSES = ["NEW", "OLD", "ACTIVE", "INACTIVE"] as const;
+
+const customerInclude = {
+  additionalContacts: { orderBy: { createdAt: "asc" as const } },
+  salesPerson: true,
+};
+
 function mapCustomerContact(row: { id: string; contact: string; email: string; phone: string }) {
   return { id: row.id, contact: row.contact, email: row.email, phone: row.phone };
+}
+
+function parseCustomerStatus(value: unknown) {
+  const status = String(value ?? "NEW").toUpperCase();
+  if (CUSTOMER_STATUSES.includes(status as (typeof CUSTOMER_STATUSES)[number])) {
+    return status as (typeof CUSTOMER_STATUSES)[number];
+  }
+  return "NEW";
 }
 
 function parseAdditionalContacts(body: Record<string, unknown>) {
@@ -87,43 +102,108 @@ function parseAdditionalContacts(body: Record<string, unknown>) {
     .filter((item) => item.contact.trim() || item.email.trim() || item.phone.trim());
 }
 
+function mapCustomer(row: {
+  id: string;
+  name: string;
+  contact: string;
+  email: string;
+  phone: string;
+  address: string;
+  status: (typeof CUSTOMER_STATUSES)[number];
+  salesPersonId: string | null;
+  salesPerson?: { name: string } | null;
+  additionalContacts: { id: string; contact: string; email: string; phone: string }[];
+}) {
+  return {
+    id: row.id,
+    name: row.name,
+    contact: row.contact,
+    email: row.email,
+    phone: row.phone,
+    address: row.address,
+    status: row.status,
+    salesPersonId: row.salesPersonId,
+    salesPersonName: row.salesPerson?.name ?? null,
+    additionalContacts: row.additionalContacts.map(mapCustomerContact),
+  };
+}
+
+function customerDataFromBody(body: Record<string, unknown>) {
+  const additionalContacts = parseAdditionalContacts(body);
+  return {
+    name: String(body.name ?? ""),
+    contact: String(body.contact ?? ""),
+    email: String(body.email ?? ""),
+    phone: String(body.phone ?? ""),
+    address: String(body.address ?? ""),
+    status: parseCustomerStatus(body.status),
+    salesPersonId: body.salesPersonId ? String(body.salesPersonId) : null,
+    additionalContacts,
+  };
+}
+
 export async function customers(req: ApiRequest, res: ApiResponse) {
   if (req.method === "GET") {
     const list = await prisma.customer.findMany({
       orderBy: { createdAt: "desc" },
-      include: { additionalContacts: { orderBy: { createdAt: "asc" } } },
+      include: customerInclude,
     });
-    return res.status(200).json(
-      list.map((row) => ({
-        ...row,
-        additionalContacts: row.additionalContacts.map(mapCustomerContact),
-      })),
-    );
+    return res.status(200).json(list.map(mapCustomer));
   }
 
   if (req.method === "POST") {
     const body = parseBody(req);
-    const additionalContacts = parseAdditionalContacts(body);
+    const data = customerDataFromBody(body);
     const created = await prisma.customer.create({
       data: {
-        name: String(body.name ?? ""),
-        contact: String(body.contact ?? ""),
-        email: String(body.email ?? ""),
-        phone: String(body.phone ?? ""),
-        address: String(body.address ?? ""),
-        additionalContacts: additionalContacts.length
-          ? { create: additionalContacts }
+        name: data.name,
+        contact: data.contact,
+        email: data.email,
+        phone: data.phone,
+        address: data.address,
+        status: data.status,
+        salesPersonId: data.salesPersonId,
+        additionalContacts: data.additionalContacts.length
+          ? { create: data.additionalContacts }
           : undefined,
       },
-      include: { additionalContacts: { orderBy: { createdAt: "asc" } } },
+      include: customerInclude,
     });
-    return res.status(201).json({
-      ...created,
-      additionalContacts: created.additionalContacts.map(mapCustomerContact),
-    });
+    return res.status(201).json(mapCustomer(created));
   }
 
   res.status(405).json({ error: "Method not allowed" });
+}
+
+export async function updateCustomer(req: ApiRequest, res: ApiResponse, id: string) {
+  if (req.method !== "PUT" && req.method !== "PATCH") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  const body = parseBody(req);
+  const data = customerDataFromBody(body);
+
+  const updated = await prisma.$transaction(async (tx) => {
+    await tx.customerContact.deleteMany({ where: { customerId: id } });
+    return tx.customer.update({
+      where: { id },
+      data: {
+        name: data.name,
+        contact: data.contact,
+        email: data.email,
+        phone: data.phone,
+        address: data.address,
+        status: data.status,
+        salesPersonId: data.salesPersonId,
+        additionalContacts: data.additionalContacts.length
+          ? { create: data.additionalContacts }
+          : undefined,
+      },
+      include: customerInclude,
+    });
+  });
+
+  return res.status(200).json(mapCustomer(updated));
 }
 
 export async function inquiries(req: ApiRequest, res: ApiResponse) {
