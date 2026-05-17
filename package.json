@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx server.ts",
     "build": "prisma generate && vite build",
-    "vercel-build": "prisma generate && prisma db push --skip-generate && vite build",
+    "vercel-build": "prisma generate && prisma db push --accept-data-loss --skip-generate && vite build",
     "postinstall": "prisma generate",
     "start": "tsx server.ts",
     "clean": "rm -rf dist server.js",
