@@ -1,8 +1,15 @@
-﻿import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 import { Customer, CustomerStatus, SalesPerson } from '../types';
 import { UserPlus, Search, X, Plus, Trash2, Pencil } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { apiFetch } from '../lib/api';
+import {
+  CUSTOMER_STATUS_BADGE,
+  CUSTOMER_STATUS_HINT,
+  CUSTOMER_STATUS_LABELS,
+  CUSTOMER_SUMMARY_META,
+  CUSTOMER_SUMMARY_STATUSES,
+} from '../constants/customers';
 
 type ContactFields = { contact: string; email: string; phone: string };
 
@@ -15,20 +22,6 @@ type CustomerForm = {
 };
 
 const CUSTOMER_STATUSES: CustomerStatus[] = ['NEW', 'OLD', 'ACTIVE', 'INACTIVE'];
-
-const STATUS_LABELS: Record<CustomerStatus, string> = {
-  NEW: 'New',
-  OLD: 'Old',
-  ACTIVE: 'Active',
-  INACTIVE: 'Inactive',
-};
-
-const STATUS_BADGE: Record<CustomerStatus, string> = {
-  NEW: 'bg-sky-50 text-sky-700 ring-sky-100',
-  OLD: 'bg-amber-50 text-amber-700 ring-amber-100',
-  ACTIVE: 'bg-emerald-50 text-emerald-700 ring-emerald-100',
-  INACTIVE: 'bg-slate-100 text-slate-500 ring-slate-200',
-};
 
 const emptyContact = (): ContactFields => ({ contact: '', email: '', phone: '' });
 
@@ -109,7 +102,15 @@ const Customers = () => {
     );
   });
 
-  const activeCount = customers.filter((c) => c.status === 'ACTIVE').length;
+  const statusCounts = useMemo(() => {
+    const counts = { NEW: 0, ACTIVE: 0, INACTIVE: 0 };
+    for (const c of customers) {
+      if (c.status === 'NEW' || c.status === 'ACTIVE' || c.status === 'INACTIVE') {
+        counts[c.status] += 1;
+      }
+    }
+    return counts;
+  }, [customers]);
 
   const updateContact = (index: number, field: keyof ContactFields, value: string) => {
     setForm((prev) => ({
@@ -188,15 +189,12 @@ const Customers = () => {
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col min-h-screen bg-slate-50">
       <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8">
-        <div className="flex items-center gap-4">
+        <motion.div className="flex items-center gap-4">
           <h2 className="text-lg font-semibold text-slate-900">Customer Registry</h2>
-          <span className="bg-emerald-50 text-emerald-600 text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wide">
-            Active: {activeCount}
-          </span>
           <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wide">
             Total: {customers.length}
           </span>
-        </div>
+        </motion.div>
         <button
           onClick={openCreate}
           className="px-4 py-2 bg-blue-600 text-white rounded text-sm font-medium shadow-sm shadow-blue-200 hover:bg-blue-700 transition-colors flex items-center gap-2"
@@ -205,8 +203,32 @@ const Customers = () => {
         </button>
       </header>
 
-      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="p-8">
-        {error && !showModal && <p className="mb-4 text-sm text-red-600">{error}</p>}
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="p-8 space-y-5">
+        {error && !showModal && <p className="text-sm text-red-600">{error}</p>}
+
+        <div>
+          <p className="text-xs text-slate-500 mb-2">{CUSTOMER_STATUS_HINT}</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {CUSTOMER_SUMMARY_STATUSES.map((key) => {
+              const meta = CUSTOMER_SUMMARY_META[key];
+              const active = statusFilter === meta.filter;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setStatusFilter(active ? 'ALL' : meta.filter)}
+                  className={`rounded-xl border p-4 text-left transition-all ${meta.tone} ${
+                    active ? 'ring-2 ring-blue-500 ring-offset-1' : 'hover:shadow-sm'
+                  }`}
+                >
+                  <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">{meta.label}</p>
+                  <p className="text-2xl font-bold text-slate-900 mt-1">{statusCounts[key]}</p>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
           <div className="p-4 border-b border-slate-100 flex flex-wrap items-center gap-3 bg-slate-50">
             <Search size={18} className="text-slate-400 shrink-0" />
@@ -218,7 +240,7 @@ const Customers = () => {
               className="flex-1 min-w-[200px] bg-transparent border-none text-sm focus:ring-0 text-slate-600 outline-none"
             />
             <div className="flex flex-wrap gap-1.5">
-              {(['ALL', ...CUSTOMER_STATUSES] as const).map((value) => (
+              {(['ALL', 'OLD'] as const).map((value) => (
                 <button
                   key={value}
                   type="button"
@@ -229,10 +251,13 @@ const Customers = () => {
                       : 'bg-white border border-slate-200 text-slate-500 hover:border-slate-300'
                   }`}
                 >
-                  {value === 'ALL' ? 'All' : STATUS_LABELS[value]}
+                  {value === 'ALL' ? 'All' : CUSTOMER_STATUS_LABELS.OLD}
                 </button>
               ))}
             </div>
+            <p className="text-xs text-slate-500 w-full sm:w-auto sm:ml-auto">
+              Showing {filtered.length} of {customers.length}
+            </p>
           </div>
 
           <div className="overflow-x-auto">
@@ -268,10 +293,10 @@ const Customers = () => {
                       <td className="px-6 py-4">
                         <span
                           className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide ring-1 ring-inset ${
-                            STATUS_BADGE[customer.status ?? 'NEW']
+                            CUSTOMER_STATUS_BADGE[customer.status ?? 'NEW']
                           }`}
                         >
-                          {STATUS_LABELS[customer.status ?? 'NEW']}
+                          {CUSTOMER_STATUS_LABELS[customer.status ?? 'NEW']}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-sm text-slate-600">{customer.salesPersonName ?? 'â€”'}</td>
@@ -357,7 +382,7 @@ const Customers = () => {
                       onChange={(e) => setForm({ ...form, status: e.target.value as CustomerStatus })}
                     >
                       {CUSTOMER_STATUSES.map((status) => (
-                        <option key={status} value={status}>{STATUS_LABELS[status]}</option>
+                        <option key={status} value={status}>{CUSTOMER_STATUS_LABELS[status]}</option>
                       ))}
                     </select>
                   </div>
