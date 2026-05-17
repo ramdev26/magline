@@ -41,4 +41,4 @@ export const CUSTOMER_SUMMARY_META: Record<
 };
 
 export const CUSTOMER_STATUS_HINT =
-  'Counts follow each customer’s status (New, Active, or Inactive). Set status when registering or editing a customer.';
+  'Counts follow each customer’s status (New, Active, or Inactive) within the selected period, by registration date.';

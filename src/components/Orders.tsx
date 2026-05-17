@@ -33,6 +33,8 @@ import {
 import { exportInquiriesToExcel, parseInquiriesFromExcel } from '../utils/excel';
 import { apiFetch } from '../lib/api';
 import { motion, AnimatePresence } from 'motion/react';
+import { DateRangeFilter } from './DateRangeFilter';
+import { defaultDateRangeState, isDateInRange, resolveDateRangeBounds } from '../utils/dateRange';
 
 const inputClass =
   'w-full rounded-lg border border-slate-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 p-2.5 bg-slate-50 text-sm';
@@ -77,6 +79,7 @@ const Orders = () => {
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [dateRange, setDateRange] = useState(defaultDateRangeState);
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
@@ -112,9 +115,16 @@ const Orders = () => {
     loadData();
   }, []);
 
+  const dateBounds = useMemo(() => resolveDateRangeBounds(dateRange), [dateRange]);
+
+  const inPeriodInquiries = useMemo(
+    () => inquiries.filter((row) => isDateInRange(row.inquiryReceivedDate, dateBounds)),
+    [inquiries, dateBounds]
+  );
+
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    return inquiries.filter((row) => {
+    return inPeriodInquiries.filter((row) => {
       const matchesSearch =
         !q ||
         String(row.serialNo).includes(q) ||
@@ -135,7 +145,7 @@ const Orders = () => {
 
       return matchesSearch && matchesCategory && matchesStatus;
     });
-  }, [inquiries, search, categoryFilter, statusFilter, workflowClock]);
+  }, [inPeriodInquiries, search, categoryFilter, statusFilter, workflowClock]);
 
   const stats = useMemo(() => {
     const counts: Record<InquiryWorkflowStatus, number> = {
@@ -144,12 +154,12 @@ const Orders = () => {
       sent: 0,
       po_received: 0,
     };
-    for (const row of inquiries) {
+    for (const row of inPeriodInquiries) {
       counts[getInquiryWorkflowStatus(row, workflowClock)] += 1;
     }
-    const totalQuoted = inquiries.reduce((sum, r) => sum + (r.quotationAmount ?? 0), 0);
-    return { counts, total: inquiries.length, totalQuoted };
-  }, [inquiries, workflowClock]);
+    const totalQuoted = inPeriodInquiries.reduce((sum, r) => sum + (r.quotationAmount ?? 0), 0);
+    return { counts, total: inPeriodInquiries.length, totalQuoted };
+  }, [inPeriodInquiries, workflowClock]);
 
   const formWorkflowMeta = useMemo(() => {
     const key = getInquiryWorkflowStatus(
@@ -465,8 +475,13 @@ const Orders = () => {
         )}
 
         <div>
+          <DateRangeFilter
+            value={dateRange}
+            onChange={setDateRange}
+            dateFieldLabel="inquiries received"
+          />
           <p className="text-xs text-slate-500 mb-2">{INQUIRY_WORKFLOW_AUTO_HINT}</p>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <motion.div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {INQUIRY_WORKFLOW_ORDER.map((key) => {
             const meta = INQUIRY_WORKFLOW_META[key];
             const active = statusFilter === meta.filter;
@@ -484,7 +499,7 @@ const Orders = () => {
               </button>
             );
           })}
-          </div>
+          </motion.div>
         </div>
 
         <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 shadow-sm">
@@ -545,7 +560,7 @@ const Orders = () => {
             </motion.div>
           </div>
           <p className="text-xs text-slate-500">
-            Showing <span className="font-semibold text-slate-700">{filtered.length}</span> of {inquiries.length} records
+            Showing <span className="font-semibold text-slate-700">{filtered.length}</span> of {inPeriodInquiries.length} in period ({inquiries.length} total)
             {stats.totalQuoted > 0 && (
               <> · Total quoted value <span className="font-semibold text-slate-700">{formatLKR(stats.totalQuoted)}</span></>
             )}

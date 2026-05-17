@@ -116,6 +116,7 @@ function mapCustomer(row: {
   address: string;
   status: (typeof CUSTOMER_STATUSES)[number];
   salesPersonId: string | null;
+  createdAt: Date;
   salesPerson?: { name: string } | null;
   additionalContacts: { id: string; contact: string; email: string; phone: string }[];
 }) {
@@ -129,6 +130,7 @@ function mapCustomer(row: {
     status: row.status,
     salesPersonId: row.salesPersonId,
     salesPersonName: row.salesPerson?.name ?? null,
+    createdAt: row.createdAt.toISOString(),
     additionalContacts: row.additionalContacts.map(mapCustomerContact),
   };
 }

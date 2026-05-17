@@ -10,6 +10,8 @@ import {
   CUSTOMER_SUMMARY_META,
   CUSTOMER_SUMMARY_STATUSES,
 } from '../constants/customers';
+import { DateRangeFilter } from './DateRangeFilter';
+import { defaultDateRangeState, isDateInRange, resolveDateRangeBounds } from '../utils/dateRange';
 
 type ContactFields = { contact: string; email: string; phone: string };
 
@@ -57,6 +59,7 @@ const Customers = () => {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<CustomerStatus | 'ALL'>('ALL');
+  const [dateRange, setDateRange] = useState(defaultDateRangeState);
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
@@ -90,7 +93,14 @@ const Customers = () => {
     contact.email.toLowerCase().includes(q) ||
     contact.phone.toLowerCase().includes(q);
 
-  const filtered = customers.filter((c) => {
+  const dateBounds = useMemo(() => resolveDateRangeBounds(dateRange), [dateRange]);
+
+  const inPeriodCustomers = useMemo(
+    () => customers.filter((c) => isDateInRange(c.createdAt, dateBounds)),
+    [customers, dateBounds]
+  );
+
+  const filtered = inPeriodCustomers.filter((c) => {
     if (statusFilter !== 'ALL' && c.status !== statusFilter) return false;
     const q = search.toLowerCase();
     const extra = c.additionalContacts ?? [];
@@ -104,13 +114,13 @@ const Customers = () => {
 
   const statusCounts = useMemo(() => {
     const counts = { NEW: 0, ACTIVE: 0, INACTIVE: 0 };
-    for (const c of customers) {
+    for (const c of inPeriodCustomers) {
       if (c.status === 'NEW' || c.status === 'ACTIVE' || c.status === 'INACTIVE') {
         counts[c.status] += 1;
       }
     }
     return counts;
-  }, [customers]);
+  }, [inPeriodCustomers]);
 
   const updateContact = (index: number, field: keyof ContactFields, value: string) => {
     setForm((prev) => ({
@@ -207,6 +217,11 @@ const Customers = () => {
         {error && !showModal && <p className="text-sm text-red-600">{error}</p>}
 
         <div>
+          <DateRangeFilter
+            value={dateRange}
+            onChange={setDateRange}
+            dateFieldLabel="customers registered"
+          />
           <p className="text-xs text-slate-500 mb-2">{CUSTOMER_STATUS_HINT}</p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {CUSTOMER_SUMMARY_STATUSES.map((key) => {
@@ -256,7 +271,7 @@ const Customers = () => {
               ))}
             </div>
             <p className="text-xs text-slate-500 w-full sm:w-auto sm:ml-auto">
-              Showing {filtered.length} of {customers.length}
+              Showing {filtered.length} of {inPeriodCustomers.length} in period ({customers.length} total)
             </p>
           </div>
 

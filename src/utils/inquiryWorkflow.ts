@@ -38,7 +38,7 @@ export function getInquiryWorkflowStatus(
 }
 
 export const INQUIRY_WORKFLOW_AUTO_HINT =
-  'Status is calculated automatically from inquiry received, quotation submitted, and PO dates.';
+  'Status is calculated automatically from inquiry received, quotation submitted, and PO dates. Summary boxes respect the selected period (by inquiry received date).';
 
 export const INQUIRY_WORKFLOW_META: Record<
   InquiryWorkflowStatus,

@@ -17,6 +17,7 @@ export interface Customer {
   status: CustomerStatus;
   salesPersonId: string | null;
   salesPersonName: string | null;
+  createdAt?: string;
   additionalContacts?: CustomerContact[];
 }
 
