@@ -1,7 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { SalesPerson, SalesManager, HeadOfSales, SalesDesignation } from '../types';
 import { formatLKR } from '../utils/currency';
-import { DESIGNATION_LABELS, SALES_DESIGNATIONS } from '../constants/sales';
+import {
+  DEFAULT_HEAD_OF_SALES_NAME,
+  DESIGNATION_LABELS,
+  SALES_DESIGNATIONS,
+} from '../constants/sales';
 import {
   Briefcase,
   Award,
@@ -19,17 +23,16 @@ import { apiFetch } from '../lib/api';
 type TeamData = {
   persons: SalesPerson[];
   managers: SalesManager[];
-  heads: HeadOfSales[];
+  head: HeadOfSales;
 };
 
-type AddType = 'head' | 'manager' | 'person';
+type AddType = 'manager' | 'person';
 
 const emptyForm = () => ({
   name: '',
   department: '',
   designation: 'SALES_EXECUTIVE' as SalesDesignation,
   managerId: '',
-  headOfSalesId: '',
 });
 
 const inputClass =
@@ -287,7 +290,7 @@ const SalesTeam = () => {
           setSelectedManager(data.managers.find((m) => m.id === selectedManager.id) ?? null);
         }
         if (selectedHead) {
-          setSelectedHead(data.heads.find((h) => h.id === selectedHead.id) ?? null);
+          setSelectedHead(data.head);
         }
       });
   };
@@ -300,14 +303,11 @@ const SalesTeam = () => {
     e.preventDefault();
     setSaving(true);
     let payload: Record<string, unknown>;
-    if (addType === 'head') {
-      payload = { type: 'head', name: form.name, department: form.department };
-    } else if (addType === 'manager') {
+    if (addType === 'manager') {
       payload = {
         type: 'manager',
         name: form.name,
         department: form.department,
-        headOfSalesId: form.headOfSalesId || null,
       };
     } else {
       payload = {
@@ -331,8 +331,8 @@ const SalesTeam = () => {
   }
 
   const unassignedPersons = team.persons.filter((p) => !p.managerId);
-  const unassignedManagers = team.managers.filter((m) => !m.headOfSalesId);
-  const teamTotal = team.persons.length + team.managers.length + team.heads.length;
+  const teamTotal = team.persons.length + team.managers.length + 1;
+  const head = team.head;
 
   return (
     <div className="flex flex-col min-h-screen bg-slate-50">
@@ -358,33 +358,24 @@ const SalesTeam = () => {
             <Crown size={16} />
             <h3 className="text-xs font-bold uppercase tracking-widest">Head of Sales</h3>
           </div>
-          {team.heads.length === 0 ? (
-            <p className="text-sm text-slate-400">Add a Head of Sales to lead the division.</p>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {team.heads.map((head) => (
-                <button
-                  key={head.id}
-                  type="button"
-                  onClick={() => setSelectedHead(head)}
-                  className="bg-gradient-to-br from-indigo-950 to-slate-900 text-white p-6 rounded-lg shadow-lg text-left hover:from-indigo-900 hover:to-slate-800 transition-colors group"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="text-[10px] font-bold text-indigo-300 uppercase tracking-widest">Head of Sales</p>
-                    <ChevronRight size={16} className="text-indigo-400 group-hover:text-white shrink-0" />
-                  </div>
-                  <h4 className="text-xl font-bold mb-3 mt-1">{head.name}</h4>
-                  <p className="flex items-center gap-2 text-xs text-slate-300 mb-2">
-                    <Briefcase size={12} /> {head.department || 'Sales division'}
-                  </p>
-                  <p className="flex items-center gap-2 text-xs font-semibold text-indigo-200">
-                    <Users size={12} /> {head.managerCount ?? 0} sales managers ·{' '}
-                    {formatLKR(head.totalTeamSales ?? 0)}
-                  </p>
-                </button>
-              ))}
+          <button
+            type="button"
+            onClick={() => setSelectedHead(head)}
+            className="w-full max-w-xl bg-gradient-to-br from-indigo-950 to-slate-900 text-white p-6 rounded-lg shadow-lg text-left hover:from-indigo-900 hover:to-slate-800 transition-colors group"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-[10px] font-bold text-indigo-300 uppercase tracking-widest">Head of Sales</p>
+              <ChevronRight size={16} className="text-indigo-400 group-hover:text-white shrink-0" />
             </div>
-          )}
+            <h4 className="text-xl font-bold mb-3 mt-1">{head.name}</h4>
+            <p className="flex items-center gap-2 text-xs text-slate-300 mb-2">
+              <Briefcase size={12} /> {head.department}
+            </p>
+            <p className="flex items-center gap-2 text-xs font-semibold text-indigo-200">
+              <Users size={12} /> {head.managerCount ?? 0} sales managers ·{' '}
+              {formatLKR(head.totalTeamSales ?? 0)}
+            </p>
+          </button>
         </section>
 
         <section>
@@ -393,7 +384,7 @@ const SalesTeam = () => {
             <h3 className="text-xs font-bold uppercase tracking-widest">Sales Managers</h3>
           </div>
           {team.managers.length === 0 ? (
-            <p className="text-sm text-slate-400">No sales managers yet. Add managers under a Head of Sales.</p>
+            <p className="text-sm text-slate-400">No sales managers yet. New managers report to {DEFAULT_HEAD_OF_SALES_NAME}.</p>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {team.managers.map((manager) => (
@@ -408,13 +399,9 @@ const SalesTeam = () => {
                     <ChevronRight size={16} className="text-slate-500 group-hover:text-white shrink-0" />
                   </div>
                   <h4 className="text-xl font-bold mb-2 mt-1">{manager.name}</h4>
-                  {manager.headOfSalesName ? (
-                    <p className="text-[10px] font-semibold text-indigo-300 uppercase tracking-wide mb-2 flex items-center gap-1">
-                      <Crown size={10} /> {manager.headOfSalesName}
-                    </p>
-                  ) : (
-                    <p className="text-[10px] font-semibold text-amber-400 uppercase mb-2">No head assigned</p>
-                  )}
+                  <p className="text-[10px] font-semibold text-indigo-300 uppercase tracking-wide mb-2 flex items-center gap-1">
+                    <Crown size={10} /> {manager.headOfSalesName ?? DEFAULT_HEAD_OF_SALES_NAME}
+                  </p>
                   <p className="flex items-center gap-2 text-xs text-slate-300 mb-2">
                     <Briefcase size={12} /> {manager.department}
                   </p>
@@ -443,21 +430,6 @@ const SalesTeam = () => {
             </div>
           )}
         </section>
-
-        {unassignedManagers.length > 0 && (
-          <section>
-            <p className="text-xs font-bold text-amber-600 uppercase tracking-widest mb-3">
-              Managers not assigned to a Head of Sales
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {unassignedManagers.map((m) => (
-                <span key={m.id} className="text-sm bg-amber-50 border border-amber-200 rounded-full px-3 py-1 text-amber-900">
-                  {m.name}
-                </span>
-              ))}
-            </div>
-          </section>
-        )}
 
         {unassignedPersons.length > 0 && (
           <section>
@@ -514,8 +486,8 @@ const SalesTeam = () => {
                   <X size={20} />
                 </button>
               </div>
-              <div className="grid grid-cols-3 gap-2 mb-4">
-                {(['head', 'manager', 'person'] as AddType[]).map((type) => (
+              <div className="grid grid-cols-2 gap-2 mb-4">
+                {(['manager', 'person'] as AddType[]).map((type) => (
                   <button
                     key={type}
                     type="button"
@@ -524,7 +496,7 @@ const SalesTeam = () => {
                       addType === type ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'
                     }`}
                   >
-                    {type === 'head' ? 'Head of Sales' : type === 'manager' ? 'Sales Manager' : 'Sales Person'}
+                    {type === 'manager' ? 'Sales Manager' : 'Sales Person'}
                   </button>
                 ))}
               </div>
@@ -540,37 +512,24 @@ const SalesTeam = () => {
                     onChange={(e) => setForm({ ...form, name: e.target.value })}
                   />
                 </div>
-                {(addType === 'head' || addType === 'manager') && (
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
-                      Department / division
-                    </label>
-                    <input
-                      required
-                      className={inputClass}
-                      value={form.department}
-                      onChange={(e) => setForm({ ...form, department: e.target.value })}
-                    />
-                  </div>
-                )}
                 {addType === 'manager' && (
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
-                      Reports to (Head of Sales)
-                    </label>
-                    <select
-                      className={inputClass}
-                      value={form.headOfSalesId}
-                      onChange={(e) => setForm({ ...form, headOfSalesId: e.target.value })}
-                    >
-                      <option value="">Unassigned</option>
-                      {team.heads.map((h) => (
-                        <option key={h.id} value={h.id}>
-                          {h.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  <>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                        Department / division
+                      </label>
+                      <input
+                        required
+                        className={inputClass}
+                        value={form.department}
+                        onChange={(e) => setForm({ ...form, department: e.target.value })}
+                      />
+                    </div>
+                    <p className="text-xs text-slate-500 bg-slate-50 border border-slate-100 rounded-lg px-3 py-2">
+                      Reports to <span className="font-semibold text-slate-800">{DEFAULT_HEAD_OF_SALES_NAME}</span>{' '}
+                      (Head of Sales)
+                    </p>
+                  </>
                 )}
                 {addType === 'person' && (
                   <>

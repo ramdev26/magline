@@ -385,6 +385,53 @@ function teamSalesTotal(
   );
 }
 
+const DEFAULT_HEAD_OF_SALES_NAME = "Lucky Gamage";
+const DEFAULT_HEAD_OF_SALES_DEPARTMENT = "Sales Division";
+
+async function ensureDefaultHeadOfSales() {
+  let head = await prisma.headOfSales.findFirst({
+    where: { name: DEFAULT_HEAD_OF_SALES_NAME },
+  });
+  if (!head) {
+    head = await prisma.headOfSales.create({
+      data: {
+        name: DEFAULT_HEAD_OF_SALES_NAME,
+        department: DEFAULT_HEAD_OF_SALES_DEPARTMENT,
+      },
+    });
+  }
+
+  await prisma.salesManager.updateMany({
+    data: { headOfSalesId: head.id },
+  });
+
+  await prisma.headOfSales.deleteMany({
+    where: { id: { not: head.id } },
+  });
+
+  return head;
+}
+
+function mapHeadRow(
+  head: { id: string; name: string; department: string; createdAt: Date },
+  mappedManagers: ReturnType<typeof mapManagerRow>[],
+  persons: Parameters<typeof mapSalesPerson>[0][]
+) {
+  const underManagers = mappedManagers.filter((m) => m.headOfSalesId === head.id);
+  const allTeamPersons = persons.filter((p) =>
+    underManagers.some((m) => m.id === p.managerId)
+  );
+  return {
+    id: head.id,
+    name: head.name,
+    department: head.department,
+    createdAt: head.createdAt.toISOString(),
+    managerCount: underManagers.length,
+    totalTeamSales: teamSalesTotal(allTeamPersons),
+    salesManagers: underManagers,
+  };
+}
+
 function mapManagerRow(
   manager: {
     id: string;
@@ -413,7 +460,9 @@ function mapManagerRow(
 
 export async function sales(req: ApiRequest, res: ApiResponse) {
   if (req.method === "GET") {
-    const [persons, managers, heads] = await Promise.all([
+    const head = await ensureDefaultHeadOfSales();
+
+    const [persons, managers] = await Promise.all([
       prisma.salesPerson.findMany({
         include: { inquiries: { orderBy: { serialNo: "desc" } }, manager: true },
         orderBy: { name: "asc" },
@@ -422,7 +471,6 @@ export async function sales(req: ApiRequest, res: ApiResponse) {
         include: { headOfSales: true },
         orderBy: { name: "asc" },
       }),
-      prisma.headOfSales.findMany({ orderBy: { name: "asc" } }),
     ]);
 
     const mappedManagers = managers.map((manager) => mapManagerRow(manager, persons));
@@ -430,21 +478,7 @@ export async function sales(req: ApiRequest, res: ApiResponse) {
     return res.status(200).json({
       persons: persons.map((p) => mapSalesPerson(p)),
       managers: mappedManagers,
-      heads: heads.map((head) => {
-        const underManagers = mappedManagers.filter((m) => m.headOfSalesId === head.id);
-        const allTeamPersons = persons.filter((p) =>
-          underManagers.some((m) => m.id === p.managerId)
-        );
-        return {
-          id: head.id,
-          name: head.name,
-          department: head.department,
-          createdAt: head.createdAt.toISOString(),
-          managerCount: underManagers.length,
-          totalTeamSales: teamSalesTotal(allTeamPersons),
-          salesManagers: underManagers,
-        };
-      }),
+      head: mapHeadRow(head, mappedManagers, persons),
     });
   }
 
@@ -453,21 +487,16 @@ export async function sales(req: ApiRequest, res: ApiResponse) {
     const type = String(body.type ?? "person");
 
     if (type === "head") {
-      const created = await prisma.headOfSales.create({
-        data: {
-          name: String(body.name ?? ""),
-          department: String(body.department ?? ""),
-        },
-      });
-      return res.status(201).json(created);
+      return res.status(400).json({ error: "Head of Sales is fixed and cannot be added." });
     }
 
     if (type === "manager") {
+      const head = await ensureDefaultHeadOfSales();
       const created = await prisma.salesManager.create({
         data: {
           name: String(body.name ?? ""),
           department: String(body.department ?? ""),
-          headOfSalesId: body.headOfSalesId ? String(body.headOfSalesId) : null,
+          headOfSalesId: head.id,
         },
         include: { headOfSales: true },
       });
