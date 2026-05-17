@@ -24,6 +24,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { apiFetch } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import EditSalesMemberModal, { EditSalesTarget } from './EditSalesMemberModal';
+import PersonDetailModal from './PersonDetailModal';
 
 type TeamData = {
   persons: SalesPerson[];
@@ -56,17 +57,36 @@ const inputClass =
 const PersonCard: React.FC<{
   person: SalesPerson;
   isSuperAdmin: boolean;
+  onClick: () => void;
   onEdit?: () => void;
-}> = ({ person, isSuperAdmin, onEdit }) => (
-  <div
-    className={`bg-white p-8 rounded-lg border shadow-sm relative ${
+}> = ({ person, isSuperAdmin, onClick, onEdit }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className={`w-full text-left bg-white p-8 rounded-lg border shadow-sm relative transition-colors hover:border-blue-300 hover:shadow-md ${
       person.status === 'SUSPENDED' ? 'border-amber-200 opacity-85' : 'border-slate-200'
     }`}
   >
     {isSuperAdmin && onEdit && (
-      <button type="button" onClick={onEdit} className="absolute top-4 right-4 p-2 rounded-lg bg-slate-100 text-slate-600 hover:bg-blue-50 hover:text-blue-700" title="Edit">
+      <span
+        role="button"
+        tabIndex={0}
+        onClick={(e) => {
+          e.stopPropagation();
+          onEdit();
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            e.stopPropagation();
+            onEdit();
+          }
+        }}
+        className="absolute top-4 right-4 p-2 rounded-lg bg-slate-100 text-slate-600 hover:bg-blue-50 hover:text-blue-700"
+        title="Edit"
+      >
         <Pencil size={16} />
-      </button>
+      </span>
     )}
     <div className="flex justify-between items-start mb-4 gap-4 pr-10">
       <div>
@@ -102,7 +122,8 @@ const PersonCard: React.FC<{
         ))
       )}
     </div>
-  </div>
+    <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mt-4">Click for full details</p>
+  </button>
 );
 
 function InquiryList({ inquiries }: { inquiries: SalesPerson['inquiries'] }) {
@@ -140,12 +161,14 @@ function ManagerDetailModal({
   isSuperAdmin,
   onEditManager,
   onEditPerson,
+  onViewPerson,
 }: {
   manager: SalesManager;
   onClose: () => void;
   isSuperAdmin: boolean;
   onEditManager: () => void;
   onEditPerson: (person: SalesPerson) => void;
+  onViewPerson: (person: SalesPerson) => void;
 }) {
   return (
     <motion.div
@@ -207,7 +230,12 @@ function ManagerDetailModal({
             <p className="text-sm text-slate-400 text-center py-8">No sales persons on this team yet.</p>
           ) : (
             manager.salesPersons?.map((person) => (
-              <div key={person.id} className="rounded-lg border border-slate-200 overflow-hidden">
+              <button
+                key={person.id}
+                type="button"
+                onClick={() => onViewPerson(person)}
+                className="w-full text-left rounded-lg border border-slate-200 overflow-hidden hover:border-blue-300 transition-colors"
+              >
                 <div className="bg-slate-50 px-4 py-3 flex flex-wrap justify-between gap-3 border-b border-slate-100">
                   <div>
                     <h4 className="font-bold text-slate-900">{person.name}</h4>
@@ -221,22 +249,33 @@ function ManagerDetailModal({
                       <p className="text-sm font-bold text-slate-900">{formatLKR(person.totalSales ?? 0)}</p>
                     </div>
                     {isSuperAdmin && (
-                      <button
-                        type="button"
-                        onClick={() => onEditPerson(person)}
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onEditPerson(person);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            onEditPerson(person);
+                          }
+                        }}
                         className="p-1.5 rounded-md text-slate-500 hover:bg-slate-200"
                         title="Edit"
                       >
                         <Pencil size={14} />
-                      </button>
+                      </span>
                     )}
                   </div>
                 </div>
                 <div className="p-4">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase mb-3">Assigned inquiries</p>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase mb-3">Tap for full sales details</p>
                   <InquiryList inquiries={person.inquiries} />
                 </div>
-              </div>
+              </button>
             ))
           )}
         </div>
@@ -331,6 +370,7 @@ const SalesTeam = () => {
   const [team, setTeam] = useState<TeamData | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [selectedManager, setSelectedManager] = useState<SalesManager | null>(null);
+  const [selectedPerson, setSelectedPerson] = useState<SalesPerson | null>(null);
   const [selectedHead, setSelectedHead] = useState<HeadOfSales | null>(null);
   const [editTarget, setEditTarget] = useState<EditSalesTarget | null>(null);
   const [form, setForm] = useState(emptyForm);
@@ -347,6 +387,9 @@ const SalesTeam = () => {
         }
         if (selectedHead) {
           setSelectedHead(data.head);
+        }
+        if (selectedPerson) {
+          setSelectedPerson(data.persons.find((p) => p.id === selectedPerson.id) ?? null);
         }
       });
   };
@@ -500,6 +543,7 @@ const SalesTeam = () => {
                   key={person.id}
                   person={person}
                   isSuperAdmin={isSuperAdmin}
+                  onClick={() => setSelectedPerson(person)}
                   onEdit={isSuperAdmin ? () => setEditTarget({ kind: 'person', member: person }) : undefined}
                 />
               ))}
@@ -574,6 +618,18 @@ const SalesTeam = () => {
             isSuperAdmin={isSuperAdmin}
             onEditManager={() => setEditTarget({ kind: 'manager', member: selectedManager })}
             onEditPerson={(person) => setEditTarget({ kind: 'person', member: person })}
+            onViewPerson={setSelectedPerson}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {selectedPerson && (
+          <PersonDetailModal
+            person={selectedPerson}
+            onClose={() => setSelectedPerson(null)}
+            isSuperAdmin={isSuperAdmin}
+            onEdit={() => setEditTarget({ kind: 'person', member: selectedPerson })}
           />
         )}
       </AnimatePresence>

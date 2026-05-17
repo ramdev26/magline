@@ -558,7 +558,7 @@ export async function sales(req: ApiRequest, res: ApiResponse) {
     const mappedManagers = managers.map((manager) => mapManagerRow(manager, persons));
 
     return res.status(200).json({
-      persons: persons.map((p) => mapSalesPerson(p)),
+      persons: persons.map((p) => mapSalesPerson(p, true)),
       managers: mappedManagers,
       head: mapHeadRow(head, mappedManagers, persons),
     });
