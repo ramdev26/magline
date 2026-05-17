@@ -60,6 +60,46 @@ export interface Inquiry {
 
 export type InquiryFormData = Omit<Inquiry, 'id' | 'serialNo' | 'salesPersonName' | 'engineer'>;
 
+export interface WorkInProgress {
+  id: string;
+  serialNo: number;
+  date: string | null;
+  jobNo: string | null;
+  poNo: string | null;
+  quotationNo: string | null;
+  customerId: string | null;
+  customerName: string;
+  salesPersonId: string | null;
+  salesPersonName: string | null;
+  category: 'LV' | 'CMS' | 'MEP' | null;
+  orderDescription: string;
+  unit: string;
+  quantity: number;
+  rate: number;
+  discount: number;
+  vatPercent: number;
+  amount: number;
+  vat: number;
+  total: number;
+  paymentStatus:
+    | 'NOT_PAID'
+    | 'PAID_0_10'
+    | 'PAID_10_50'
+    | 'PAID_50_75'
+    | 'PAID_75_99'
+    | 'PAID_FULLY'
+    | 'CREDIT_30_DAYS'
+    | 'FULLY_ON_DELIVERY';
+  productionStages: string[];
+  deliveryStages: string[];
+  delayReason: 'COLOR_MISMATCHED' | 'COST_ISSUES' | 'ITEM_MISTAKES' | 'FACTORY_PRODUCTION' | null;
+  delayNote: string | null;
+  returnReason: 'DAMAGED' | 'WRONG_CHANNEL' | 'PRODUCTION' | null;
+  returnNote: string | null;
+  notes: string | null;
+  createdAt?: string;
+}
+
 export type SalesDesignation =
   | 'ASSISTANT_SALES_MANAGER'
   | 'SENIOR_SALES_EXECUTIVE'

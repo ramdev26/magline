@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Users, ShoppingCart, Briefcase, UserCog, HardHat, LogOut } from 'lucide-react';
+import { LayoutDashboard, Users, ShoppingCart, ClipboardList, Briefcase, UserCog, HardHat, LogOut } from 'lucide-react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
@@ -11,6 +11,7 @@ const Sidebar = () => {
     { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
     { to: '/customers', icon: Users, label: 'Customers' },
     { to: '/orders', icon: ShoppingCart, label: 'Inquiries' },
+    { to: '/wip', icon: ClipboardList, label: 'Work in Progress' },
     { to: '/sales', icon: Briefcase, label: 'Sales Team' },
     ...(isSuperAdmin
       ? [

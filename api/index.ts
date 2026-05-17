@@ -15,6 +15,7 @@ import {
   updateSalesManager,
   updateSalesPerson,
 } from "./lib/handlers.js";
+import { deleteWip, listOrCreateWip, updateWip } from "./lib/wip-handlers.js";
 import { protect } from "./lib/protect.js";
 import { withAuth } from "./lib/with-auth.js";
 import { prisma } from "./lib/prisma.js";
@@ -145,6 +146,16 @@ export default async function handler(req: VercelLikeRequest, res: ApiResponse) 
     }
     if (segments[0] === "inquiries" && segments[1] && segments[1] !== "import") {
       return await protect(async (r, re) => updateInquiry(r, re, segments[1]))(apiReq, res);
+    }
+
+    if (route === "wip") {
+      return await protect(listOrCreateWip)(apiReq, res);
+    }
+    if (segments[0] === "wip" && segments[1]) {
+      if (req.method === "DELETE") {
+        return await protect(async (r, re) => deleteWip(r, re, segments[1]))(apiReq, res);
+      }
+      return await protect(async (r, re) => updateWip(r, re, segments[1]))(apiReq, res);
     }
 
     return res.status(404).json({ error: "Not found", route });

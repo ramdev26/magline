@@ -47,6 +47,30 @@ enum SalesSuspensionReason {
   OTHER
 }
 
+enum WipPaymentStatus {
+  NOT_PAID
+  PAID_0_10
+  PAID_10_50
+  PAID_50_75
+  PAID_75_99
+  PAID_FULLY
+  CREDIT_30_DAYS
+  FULLY_ON_DELIVERY
+}
+
+enum WipDelayReason {
+  COLOR_MISMATCHED
+  COST_ISSUES
+  ITEM_MISTAKES
+  FACTORY_PRODUCTION
+}
+
+enum WipReturnReason {
+  DAMAGED
+  WRONG_CHANNEL
+  PRODUCTION
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -72,6 +96,7 @@ model Customer {
   updatedAt           DateTime          @updatedAt
   inquiries           Inquiry[]
   additionalContacts  CustomerContact[]
+  workInProgress      WorkInProgress[]
 }
 
 model CustomerContact {
@@ -119,6 +144,7 @@ model SalesPerson {
   createdAt        DateTime               @default(now())
   inquiries        Inquiry[]
   customers        Customer[]
+  workInProgress   WorkInProgress[]
 }
 
 model Engineer {
@@ -160,4 +186,35 @@ model Inquiry {
   category               OrderCategory?
   createdAt              DateTime       @default(now())
   updatedAt              DateTime       @updatedAt
+}
+
+model WorkInProgress {
+  id               String           @id @default(cuid())
+  serialNo         Int              @unique @default(autoincrement())
+  date             DateTime?
+  jobNo            String?
+  poNo             String?
+  quotationNo      String?
+  customerId       String?
+  customer         Customer?        @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  customerName     String           @default("")
+  salesPersonId    String?
+  salesPerson      SalesPerson?     @relation(fields: [salesPersonId], references: [id], onDelete: SetNull)
+  category         OrderCategory?
+  orderDescription String           @default("")
+  unit             String           @default("Nos")
+  quantity         Decimal          @default(0) @db.Decimal(14, 2)
+  rate             Decimal          @default(0) @db.Decimal(14, 2)
+  discount         Decimal          @default(0) @db.Decimal(14, 2)
+  vatPercent       Decimal          @default(18) @db.Decimal(5, 2)
+  paymentStatus    WipPaymentStatus @default(NOT_PAID)
+  productionStages String[]         @default([])
+  deliveryStages   String[]         @default([])
+  delayReason      WipDelayReason?
+  delayNote        String?
+  returnReason     WipReturnReason?
+  returnNote       String?
+  notes            String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
 }

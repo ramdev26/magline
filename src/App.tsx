@@ -5,6 +5,7 @@ import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import Customers from './components/Customers';
 import Orders from './components/Orders';
+import WorkInProgress from './components/WorkInProgress';
 import SalesTeam from './components/SalesTeam';
 import Login from './components/Login';
 import Users from './components/Users';
@@ -58,6 +59,14 @@ function AppRoutes() {
         element={
           <ProtectedLayout>
             <Orders />
+          </ProtectedLayout>
+        }
+      />
+      <Route
+        path="/wip"
+        element={
+          <ProtectedLayout>
+            <WorkInProgress />
           </ProtectedLayout>
         }
       />
