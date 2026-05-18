@@ -85,6 +85,7 @@ function parseFollowUps(body: Record<string, unknown>) {
 }
 
 type InquiryRow = Inquiry & {
+  projectRemark?: string | null;
   customer?: { name: string } | null;
   salesPerson?: { name: string } | null;
   salesManager?: { name: string } | null;
@@ -122,6 +123,7 @@ export function mapInquiry(row: InquiryRow) {
     contactPhone: row.contactPhone,
     contactEmail: row.contactEmail,
     projectName: row.projectName,
+    projectRemark: row.projectRemark,
     document: row.document,
     documents,
     assigneeType,
@@ -168,6 +170,7 @@ export function inquiryDataFromBody(body: Record<string, unknown>) {
     contactPhone: body.contactPhone ? String(body.contactPhone) : null,
     contactEmail: body.contactEmail ? String(body.contactEmail) : null,
     projectName: body.projectName ? String(body.projectName) : null,
+    projectRemark: body.projectRemark ? String(body.projectRemark) : null,
     document: legacyDocument,
     ...assignee,
     quotationRequiredDate: parseOptionalDate(body.quotationRequiredDate),

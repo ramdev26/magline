@@ -77,6 +77,7 @@ export interface Inquiry {
   contactPhone: string | null;
   contactEmail: string | null;
   projectName: string | null;
+  projectRemark: string | null;
   /** @deprecated Legacy single document field */
   document: string | null;
   documents?: InquiryDocument[];

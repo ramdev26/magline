@@ -47,6 +47,7 @@ export const emptyInquiryForm = (): InquiryFormData => ({
   contactPhone: '',
   contactEmail: '',
   projectName: '',
+  projectRemark: '',
   documents: [],
   assignee: '',
   salesPersonId: null,

@@ -219,6 +219,7 @@ const Orders = () => {
       customerId: matchedCustomer?.id ?? row.customerId,
       customerName: matchedCustomer?.name ?? row.customerName,
       projectName: row.projectName ?? '',
+      projectRemark: row.projectRemark ?? '',
       documents:
         row.documents?.length
           ? row.documents.map((doc) => ({
@@ -460,6 +461,8 @@ const Orders = () => {
                       : row.document
                   }
                 />
+                <DetailItem label="Project" value={row.projectName} />
+                <DetailItem label="Project remark" value={row.projectRemark} />
                 <DetailItem label="Contact person" value={row.contactDetails} />
                 <DetailItem label="Phone" value={row.contactPhone} />
                 <DetailItem label="Email" value={row.contactEmail} />
@@ -803,13 +806,20 @@ const Orders = () => {
                       <label className={labelClass}>Project name</label>
                       <input className={inputClass} value={form.projectName ?? ''} onChange={(e) => setForm({ ...form, projectName: e.target.value })} />
                     </div>
-                    <div>
-                      <InquiryDocumentsField
-                        documents={form.documents}
-                        onChange={(documents) => setForm({ ...form, documents })}
+                    <div className="md:col-span-2">
+                      <label className={labelClass}>Remark</label>
+                      <textarea
+                        className={`${inputClass} min-h-[80px]`}
+                        placeholder="Notes about the customer or project..."
+                        value={form.projectRemark ?? ''}
+                        onChange={(e) => setForm({ ...form, projectRemark: e.target.value })}
                       />
                     </div>
                   </div>
+                  <InquiryDocumentsField
+                    documents={form.documents}
+                    onChange={(documents) => setForm({ ...form, documents })}
+                  />
                 </section>
 
                 <section className="space-y-4">

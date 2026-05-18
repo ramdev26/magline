@@ -197,6 +197,7 @@ model Inquiry {
   contactPhone           String?
   contactEmail           String?
   projectName            String?
+  projectRemark          String?
   document               String?
   salesPersonId          String?
   salesManagerId         String?
