@@ -38,6 +38,34 @@ export interface Engineer {
   createdAt?: string;
 }
 
+export type InquiryFollowUpStatus =
+  | 'CONSULTANT_REVIEW'
+  | 'DRAWING_CONFIRMATION_SENT'
+  | 'DRAWING_APPROVAL_PENDING'
+  | 'PRICE_NEGOTIATING'
+  | 'PENDING_CONSULTANT_APPROVAL'
+  | 'CHANGES_PROPOSED_BY_MAGLINE'
+  | 'CHANGES_PROPOSED_BY_CLIENT'
+  | 'PENDING_TENDER'
+  | 'TENDER_LOSS'
+  | 'TENDER_WON'
+  | 'OTHER_MATTER';
+
+export interface InquiryDocument {
+  id?: string;
+  fileName: string;
+  remarks: string;
+  fileData?: string | null;
+}
+
+export interface InquiryFollowUp {
+  id?: string;
+  status: InquiryFollowUpStatus;
+  remarks: string;
+  followUpDate: string | null;
+  followUpBy: string;
+}
+
 export interface Inquiry {
   id: string;
   serialNo: number;
@@ -49,7 +77,11 @@ export interface Inquiry {
   contactPhone: string | null;
   contactEmail: string | null;
   projectName: string | null;
+  /** @deprecated Legacy single document field */
   document: string | null;
+  documents?: InquiryDocument[];
+  assigneeType?: SalesAssigneeType | null;
+  assigneeId?: string | null;
   salesPersonId: string | null;
   salesPersonName: string | null;
   quotationRequiredDate: string | null;
@@ -65,10 +97,16 @@ export interface Inquiry {
   awardedParty: string | null;
   awardedPrice: number | null;
   remarks: string | null;
+  followUps?: InquiryFollowUp[];
   category: 'LV' | 'CMS' | 'MEP' | null;
 }
 
-export type InquiryFormData = Omit<Inquiry, 'id' | 'serialNo' | 'salesPersonName' | 'engineer'>;
+export type InquiryFormData = Omit<
+  Inquiry,
+  'id' | 'serialNo' | 'salesPersonName' | 'engineer' | 'document' | 'assigneeType' | 'assigneeId'
+> & {
+  assignee: string;
+};
 
 export interface WorkInProgress {
   id: string;

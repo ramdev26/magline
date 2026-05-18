@@ -52,6 +52,20 @@ enum SalesSuspensionReason {
   OTHER
 }
 
+enum InquiryFollowUpStatus {
+  CONSULTANT_REVIEW
+  DRAWING_CONFIRMATION_SENT
+  DRAWING_APPROVAL_PENDING
+  PRICE_NEGOTIATING
+  PENDING_CONSULTANT_APPROVAL
+  CHANGES_PROPOSED_BY_MAGLINE
+  CHANGES_PROPOSED_BY_CLIENT
+  PENDING_TENDER
+  TENDER_LOSS
+  TENDER_WON
+  OTHER_MATTER
+}
+
 enum WipPaymentStatus {
   NOT_PAID
   PAID_0_10
@@ -128,6 +142,7 @@ model HeadOfSales {
   createdAt     DateTime       @default(now())
   salesManagers SalesManager[]
   customers     Customer[]
+  inquiries     Inquiry[]
 }
 
 model SalesManager {
@@ -143,6 +158,7 @@ model SalesManager {
   createdAt         DateTime               @default(now())
   salesPersons      SalesPerson[]
   customers         Customer[]
+  inquiries         Inquiry[]
 }
 
 model SalesPerson {
@@ -183,7 +199,11 @@ model Inquiry {
   projectName            String?
   document               String?
   salesPersonId          String?
+  salesManagerId         String?
+  headOfSalesId          String?
   salesPerson            SalesPerson?   @relation(fields: [salesPersonId], references: [id], onDelete: SetNull)
+  salesManager           SalesManager?  @relation(fields: [salesManagerId], references: [id], onDelete: SetNull)
+  headOfSales            HeadOfSales?   @relation(fields: [headOfSalesId], references: [id], onDelete: SetNull)
   quotationRequiredDate  DateTime?
   engineerId             String?
   engineer               Engineer?      @relation(fields: [engineerId], references: [id], onDelete: SetNull)
@@ -200,6 +220,29 @@ model Inquiry {
   category               OrderCategory?
   createdAt              DateTime       @default(now())
   updatedAt              DateTime       @updatedAt
+  documents              InquiryDocument[]
+  followUps              InquiryFollowUp[]
+}
+
+model InquiryDocument {
+  id        String   @id @default(cuid())
+  inquiryId String
+  inquiry   Inquiry  @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
+  fileName  String   @default("")
+  remarks   String   @default("")
+  fileData  String?  @db.Text
+  createdAt DateTime @default(now())
+}
+
+model InquiryFollowUp {
+  id           String                @id @default(cuid())
+  inquiryId    String
+  inquiry      Inquiry               @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
+  status       InquiryFollowUpStatus
+  remarks      String                @default("")
+  followUpDate DateTime?
+  followUpBy   String                @default("")
+  createdAt    DateTime              @default(now())
 }
 
 model WorkInProgress {

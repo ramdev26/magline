@@ -1,9 +1,19 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Inquiry, Customer, SalesPerson, Engineer } from '../types';
+import { Inquiry, Customer, Engineer, SalesPerson } from '../types';
+import { buildAssigneeOptions, buildAssigneeValue, type AssigneeOption } from '../lib/salesAssignee';
+import {
+  InquiryAssigneeSelect,
+  InquiryDocumentsField,
+  InquiryPoFollowUpSection,
+} from './InquiryFormExtras';
 import { useAuth } from '../context/AuthContext';
 import { formatLKR } from '../utils/currency';
-import { emptyInquiryForm, MODE_OF_INQUIRY, ONGOING_TENDER } from '../constants/inquiry';
+import {
+  emptyInquiryForm,
+  INQUIRY_FOLLOW_UP_LABELS,
+  MODE_OF_INQUIRY,
+} from '../constants/inquiry';
 import {
   getInquiryWorkflowStatus,
   INQUIRY_WORKFLOW_AUTO_HINT,
@@ -72,6 +82,7 @@ function DetailItem({ label, value }: { label: string; value: React.ReactNode })
 const Orders = () => {
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [assigneeOptions, setAssigneeOptions] = useState<AssigneeOption[]>([]);
   const [salesPersons, setSalesPersons] = useState<SalesPerson[]>([]);
   const [engineers, setEngineers] = useState<Engineer[]>([]);
   const { isSuperAdmin } = useAuth();
@@ -101,12 +112,16 @@ const Orders = () => {
     const [inqRes, custRes, salesRes, engRes] = await Promise.all([
       apiFetch('/api/inquiries'),
       apiFetch('/api/customers'),
-      apiFetch('/api/sales?activeOnly=1'),
+      apiFetch('/api/sales'),
       apiFetch('/api/engineers'),
     ]);
+    const salesData = await salesRes.json();
     setInquiries(await inqRes.json());
     setCustomers(await custRes.json());
-    setSalesPersons((await salesRes.json()).persons ?? []);
+    setSalesPersons(salesData.persons ?? []);
+    setAssigneeOptions(
+      buildAssigneeOptions(salesData.persons ?? [], salesData.managers ?? [], salesData.head ?? null)
+    );
     setEngineers(await engRes.json());
     setLoading(false);
   };
@@ -161,6 +176,18 @@ const Orders = () => {
     return { counts, total: inPeriodInquiries.length, totalQuoted };
   }, [inPeriodInquiries, workflowClock]);
 
+  const assigneeGroups = useMemo(() => {
+    const groups = new Map<string, AssigneeOption[]>();
+    for (const option of assigneeOptions) {
+      const list = groups.get(option.group) ?? [];
+      list.push(option);
+      groups.set(option.group, list);
+    }
+    return [...groups.entries()];
+  }, [assigneeOptions]);
+
+  const showFollowUpSection = !form.poNo?.trim();
+
   const formWorkflowMeta = useMemo(() => {
     const key = getInquiryWorkflowStatus(
       {
@@ -192,8 +219,17 @@ const Orders = () => {
       customerId: matchedCustomer?.id ?? row.customerId,
       customerName: matchedCustomer?.name ?? row.customerName,
       projectName: row.projectName ?? '',
-      document: row.document ?? '',
-      salesPersonId: row.salesPersonId,
+      documents:
+        row.documents?.length
+          ? row.documents.map((doc) => ({
+              fileName: doc.fileName,
+              remarks: doc.remarks ?? '',
+              fileData: doc.fileData ?? null,
+            }))
+          : row.document
+            ? [{ fileName: row.document, remarks: '', fileData: null }]
+            : [],
+      assignee: buildAssigneeValue(row),
       quotationRequiredDate: row.quotationRequiredDate ?? '',
       engineerId: row.engineerId,
       quotationNo: row.quotationNo ?? '',
@@ -206,6 +242,13 @@ const Orders = () => {
       awardedParty: row.awardedParty ?? '',
       awardedPrice: row.awardedPrice,
       remarks: row.remarks ?? '',
+      followUps:
+        row.followUps?.map((fu) => ({
+          status: fu.status,
+          remarks: fu.remarks ?? '',
+          followUpDate: fu.followUpDate ?? '',
+          followUpBy: fu.followUpBy ?? '',
+        })) ?? [],
       category: row.category ?? 'LV',
     });
     setShowModal(true);
@@ -228,10 +271,11 @@ const Orders = () => {
 
     const payload = {
       ...form,
-      salesPersonId: form.salesPersonId || null,
+      assignee: form.assignee || null,
       customerId: form.customerId || null,
       quotationAmount: form.quotationAmount ?? null,
       awardedPrice: form.awardedPrice ?? null,
+      followUps: showFollowUpSection ? form.followUps : [],
     };
 
     const url = editingId ? `/api/inquiries/${editingId}` : '/api/inquiries';
@@ -408,16 +452,23 @@ const Orders = () => {
             >
               <div className="p-4 sm:p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <DetailItem label="Mode of inquiry" value={row.modeOfInquiry} />
-                <DetailItem label="Document" value={row.document} />
+                <DetailItem
+                  label="Documents"
+                  value={
+                    row.documents?.length
+                      ? row.documents.map((d) => d.fileName).join(', ')
+                      : row.document
+                  }
+                />
                 <DetailItem label="Contact person" value={row.contactDetails} />
                 <DetailItem label="Phone" value={row.contactPhone} />
                 <DetailItem label="Email" value={row.contactEmail} />
                 <DetailItem label="Engineer" value={row.engineer} />
                 <DetailItem label="Quotation required" value={formatDate(row.quotationRequiredDate)} />
                 <DetailItem label="Quotation submitted" value={formatDate(row.quotationSubmittedDate)} />
-                <DetailItem label="JSB no" value={row.jsbNo} />
                 <DetailItem label="PO no" value={row.poNo} />
                 <DetailItem label="PO received" value={formatDate(row.poReceivedDate)} />
+                <DetailItem label="JSB no" value={row.jsbNo} />
                 <DetailItem label="Awarded party" value={row.awardedParty} />
                 <DetailItem
                   label="Awarded price"
@@ -426,6 +477,21 @@ const Orders = () => {
                 <div className="sm:col-span-2 lg:col-span-4">
                   <DetailItem label="Remarks" value={row.remarks} />
                 </div>
+                {row.followUps && row.followUps.length > 0 && (
+                  <div className="sm:col-span-2 lg:col-span-4 space-y-2">
+                    <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Follow-ups</p>
+                    {row.followUps.map((fu, idx) => (
+                      <div key={fu.id ?? idx} className="rounded-lg border border-violet-100 bg-violet-50/50 p-3 text-sm">
+                        <p className="font-semibold text-violet-900">
+                          {INQUIRY_FOLLOW_UP_LABELS[fu.status]}
+                          {fu.followUpDate ? ` · ${formatDate(fu.followUpDate)}` : ''}
+                        </p>
+                        {fu.followUpBy && <p className="text-slate-600 mt-0.5">By: {fu.followUpBy}</p>}
+                        {fu.remarks && <p className="text-slate-600 mt-1">{fu.remarks}</p>}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </motion.div>
           )}
@@ -495,7 +561,9 @@ const Orders = () => {
                 }`}
               >
                 <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">{meta.label}</p>
-                <p className="text-2xl font-bold text-slate-900 mt-1">{stats.counts[key]}</p>
+                <p className={`text-2xl font-bold mt-1 ${key === 'delay' ? 'text-red-600' : 'text-slate-900'}`}>
+                  {stats.counts[key]}
+                </p>
               </button>
             );
           })}
@@ -736,8 +804,10 @@ const Orders = () => {
                       <input className={inputClass} value={form.projectName ?? ''} onChange={(e) => setForm({ ...form, projectName: e.target.value })} />
                     </div>
                     <div>
-                      <label className={labelClass}>Document (reference / file name)</label>
-                      <input className={inputClass} value={form.document ?? ''} onChange={(e) => setForm({ ...form, document: e.target.value })} />
+                      <InquiryDocumentsField
+                        documents={form.documents}
+                        onChange={(documents) => setForm({ ...form, documents })}
+                      />
                     </div>
                   </div>
                 </section>
@@ -747,10 +817,11 @@ const Orders = () => {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
                       <label className={labelClass}>Sales person</label>
-                      <select className={inputClass} value={form.salesPersonId ?? ''} onChange={(e) => setForm({ ...form, salesPersonId: e.target.value || null })}>
-                        <option value="">Unassigned</option>
-                        {salesPersons.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                      </select>
+                      <InquiryAssigneeSelect
+                        value={form.assignee}
+                        assigneeGroups={assigneeGroups}
+                        onChange={(assignee) => setForm({ ...form, assignee })}
+                      />
                     </div>
                     <div>
                       <label className={labelClass}>Quotation required date</label>
@@ -801,42 +872,11 @@ const Orders = () => {
                   </div>
                 </section>
 
-                <section className="space-y-4">
-                  <h4 className="text-sm font-bold text-slate-800 border-b pb-2">Award & PO</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                      <label className={labelClass}>Ongoing / tender</label>
-                      <select className={inputClass} value={form.ongoingTender ?? ''} onChange={(e) => setForm({ ...form, ongoingTender: e.target.value })}>
-                        <option value="">—</option>
-                        {ONGOING_TENDER.map((v) => <option key={v} value={v}>{v}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className={labelClass}>JSB no</label>
-                      <input className={inputClass} value={form.jsbNo ?? ''} onChange={(e) => setForm({ ...form, jsbNo: e.target.value })} />
-                    </div>
-                    <div>
-                      <label className={labelClass}>PO no</label>
-                      <input className={inputClass} value={form.poNo ?? ''} onChange={(e) => setForm({ ...form, poNo: e.target.value })} />
-                    </div>
-                    <div>
-                      <label className={labelClass}>PO received date</label>
-                      <input type="date" className={inputClass} value={form.poReceivedDate ?? ''} onChange={(e) => setForm({ ...form, poReceivedDate: e.target.value })} />
-                    </div>
-                    <div>
-                      <label className={labelClass}>Awarded party</label>
-                      <input className={inputClass} value={form.awardedParty ?? ''} onChange={(e) => setForm({ ...form, awardedParty: e.target.value })} />
-                    </div>
-                    <div>
-                      <label className={labelClass}>Awarded price (LKR)</label>
-                      <input type="number" min={0} className={inputClass} value={form.awardedPrice ?? ''} onChange={(e) => setForm({ ...form, awardedPrice: e.target.value ? Number(e.target.value) : null })} />
-                    </div>
-                    <div className="md:col-span-3">
-                      <label className={labelClass}>Remarks</label>
-                      <textarea className={`${inputClass} min-h-[80px]`} value={form.remarks ?? ''} onChange={(e) => setForm({ ...form, remarks: e.target.value })} />
-                    </div>
-                  </div>
-                </section>
+                <InquiryPoFollowUpSection
+                  form={form}
+                  setForm={setForm}
+                  showFollowUp={showFollowUpSection}
+                />
 
                 <div className="flex gap-3 pt-2 border-t border-slate-100">
                   <button type="button" onClick={() => setShowModal(false)} className="flex-1 py-3 rounded-lg border border-slate-200 font-semibold text-slate-600 hover:bg-slate-50">

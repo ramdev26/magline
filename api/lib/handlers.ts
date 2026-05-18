@@ -10,7 +10,11 @@ function parseBody(req: ApiRequest) {
 const inquiryInclude = {
   customer: true,
   salesPerson: true,
+  salesManager: true,
+  headOfSales: true,
   engineer: true,
+  documents: { orderBy: { createdAt: "asc" as const } },
+  followUps: { orderBy: { followUpDate: "desc" as const } },
 } as const;
 
 export async function dashboard(_req: ApiRequest, res: ApiResponse) {
@@ -394,8 +398,13 @@ export async function inquiries(req: ApiRequest, res: ApiResponse) {
     await applyCustomerToInquiryData(data);
     await applyEngineerToInquiryData(data, body);
 
+    const { documents, followUps, ...inquiryData } = data;
     const created = await prisma.inquiry.create({
-      data,
+      data: {
+        ...inquiryData,
+        documents: documents.length ? { create: documents } : undefined,
+        followUps: followUps.length ? { create: followUps } : undefined,
+      },
       include: inquiryInclude,
     });
     return res.status(201).json(mapInquiry(created));
@@ -427,7 +436,14 @@ export async function bulkImportInquiries(req: ApiRequest, res: ApiResponse) {
         continue;
       }
       await applyEngineerToInquiryData(data, rowBody);
-      await prisma.inquiry.create({ data });
+      const { documents, followUps, ...inquiryData } = data;
+      await prisma.inquiry.create({
+        data: {
+          ...inquiryData,
+          documents: documents.length ? { create: documents } : undefined,
+          followUps: followUps.length ? { create: followUps } : undefined,
+        },
+      });
       created++;
     } catch (err) {
       errors.push({ row: i + 1, message: err instanceof Error ? err.message : "Import failed" });
@@ -452,10 +468,20 @@ export async function updateInquiry(req: ApiRequest, res: ApiResponse, id: strin
   await applyCustomerToInquiryData(data);
   await applyEngineerToInquiryData(data, body);
 
-  const updated = await prisma.inquiry.update({
-    where: { id },
-    data,
-    include: inquiryInclude,
+  const { documents, followUps, ...inquiryData } = data;
+
+  const updated = await prisma.$transaction(async (tx) => {
+    await tx.inquiryDocument.deleteMany({ where: { inquiryId: id } });
+    await tx.inquiryFollowUp.deleteMany({ where: { inquiryId: id } });
+    return tx.inquiry.update({
+      where: { id },
+      data: {
+        ...inquiryData,
+        documents: documents.length ? { create: documents } : undefined,
+        followUps: followUps.length ? { create: followUps } : undefined,
+      },
+      include: inquiryInclude,
+    });
   });
 
   return res.status(200).json(mapInquiry(updated));
