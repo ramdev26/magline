@@ -1,20 +1,26 @@
-import type { CustomerStatus } from '../types';
+import type { CustomerActivityStatus, CustomerLifecycleStatus } from '../types';
 
 /** Primary customer summary buckets shown on the registry. */
 export const CUSTOMER_SUMMARY_STATUSES = ['NEW', 'ACTIVE', 'INACTIVE'] as const;
 
 export type CustomerSummaryStatus = (typeof CUSTOMER_SUMMARY_STATUSES)[number];
 
-export const CUSTOMER_STATUS_LABELS: Record<CustomerStatus, string> = {
+export const CUSTOMER_LIFECYCLE_LABELS: Record<CustomerLifecycleStatus, string> = {
   NEW: 'New',
   OLD: 'Old',
+};
+
+export const CUSTOMER_ACTIVITY_LABELS: Record<CustomerActivityStatus, string> = {
   ACTIVE: 'Active',
   INACTIVE: 'Inactive',
 };
 
-export const CUSTOMER_STATUS_BADGE: Record<CustomerStatus, string> = {
+export const CUSTOMER_LIFECYCLE_BADGE: Record<CustomerLifecycleStatus, string> = {
   NEW: 'bg-sky-50 text-sky-700 ring-sky-100',
   OLD: 'bg-amber-50 text-amber-700 ring-amber-100',
+};
+
+export const CUSTOMER_ACTIVITY_BADGE: Record<CustomerActivityStatus, string> = {
   ACTIVE: 'bg-emerald-50 text-emerald-700 ring-emerald-100',
   INACTIVE: 'bg-slate-100 text-slate-500 ring-slate-200',
 };
@@ -41,4 +47,4 @@ export const CUSTOMER_SUMMARY_META: Record<
 };
 
 export const CUSTOMER_STATUS_HINT =
-  'Counts follow each customer’s status (New, Active, or Inactive) within the selected period, by registration date.';
+  'New = recently registered; Active/Inactive = engagement. A customer can be New and Active (or Inactive) at the same time. Counts use the selected registration period.';

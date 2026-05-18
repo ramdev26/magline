@@ -1,20 +1,30 @@
-export type CustomerStatus = 'NEW' | 'OLD' | 'ACTIVE' | 'INACTIVE';
+export type CustomerLifecycleStatus = 'NEW' | 'OLD';
+export type CustomerActivityStatus = 'ACTIVE' | 'INACTIVE';
+/** @deprecated Legacy combined status; prefer lifecycleStatus + activityStatus */
+export type CustomerStatus = CustomerLifecycleStatus | CustomerActivityStatus | 'ACTIVE' | 'INACTIVE';
 
 export interface CustomerContact {
   id: string;
   contact: string;
+  designation: string;
   email: string;
   phone: string;
 }
+
+export type SalesAssigneeType = 'person' | 'manager' | 'head';
 
 export interface Customer {
   id: string;
   name: string;
   contact: string;
+  contactDesignation: string;
   email: string;
   phone: string;
   address: string;
-  status: CustomerStatus;
+  lifecycleStatus: CustomerLifecycleStatus;
+  activityStatus: CustomerActivityStatus;
+  assigneeType: SalesAssigneeType | null;
+  assigneeId: string | null;
   salesPersonId: string | null;
   salesPersonName: string | null;
   createdAt?: string;

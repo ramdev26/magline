@@ -75,23 +75,109 @@ export async function dashboard(_req: ApiRequest, res: ApiResponse) {
   });
 }
 
-const CUSTOMER_STATUSES = ["NEW", "OLD", "ACTIVE", "INACTIVE"] as const;
+const CUSTOMER_LIFECYCLE_STATUSES = ["NEW", "OLD"] as const;
+const CUSTOMER_ACTIVITY_STATUSES = ["ACTIVE", "INACTIVE"] as const;
 
 const customerInclude = {
   additionalContacts: { orderBy: { createdAt: "asc" as const } },
   salesPerson: true,
+  salesManager: true,
+  headOfSales: true,
 };
 
-function mapCustomerContact(row: { id: string; contact: string; email: string; phone: string }) {
-  return { id: row.id, contact: row.contact, email: row.email, phone: row.phone };
+function mapCustomerContact(row: {
+  id: string;
+  contact: string;
+  designation: string;
+  email: string;
+  phone: string;
+}) {
+  return {
+    id: row.id,
+    contact: row.contact,
+    designation: row.designation,
+    email: row.email,
+    phone: row.phone,
+  };
 }
 
-function parseCustomerStatus(value: unknown) {
+function parseLifecycleStatus(value: unknown) {
   const status = String(value ?? "NEW").toUpperCase();
-  if (CUSTOMER_STATUSES.includes(status as (typeof CUSTOMER_STATUSES)[number])) {
-    return status as (typeof CUSTOMER_STATUSES)[number];
+  if (CUSTOMER_LIFECYCLE_STATUSES.includes(status as (typeof CUSTOMER_LIFECYCLE_STATUSES)[number])) {
+    return status as (typeof CUSTOMER_LIFECYCLE_STATUSES)[number];
   }
   return "NEW";
+}
+
+function parseActivityStatus(value: unknown) {
+  const status = String(value ?? "ACTIVE").toUpperCase();
+  if (CUSTOMER_ACTIVITY_STATUSES.includes(status as (typeof CUSTOMER_ACTIVITY_STATUSES)[number])) {
+    return status as (typeof CUSTOMER_ACTIVITY_STATUSES)[number];
+  }
+  return "ACTIVE";
+}
+
+function normalizeStoredCustomerStatus(
+  status: string,
+  activityStatus: string
+): { lifecycleStatus: (typeof CUSTOMER_LIFECYCLE_STATUSES)[number]; activityStatus: (typeof CUSTOMER_ACTIVITY_STATUSES)[number] } {
+  if (status === "ACTIVE") {
+    return { lifecycleStatus: "OLD", activityStatus: "ACTIVE" };
+  }
+  if (status === "INACTIVE") {
+    return { lifecycleStatus: "OLD", activityStatus: "INACTIVE" };
+  }
+  return {
+    lifecycleStatus: status === "OLD" ? "OLD" : "NEW",
+    activityStatus: activityStatus === "INACTIVE" ? "INACTIVE" : "ACTIVE",
+  };
+}
+
+function parseAssignee(body: Record<string, unknown>) {
+  const rawAssignee = body.assignee ? String(body.assignee) : "";
+  if (rawAssignee) {
+    const [type, id] = rawAssignee.split(":");
+    if (type === "person" && id) return { salesPersonId: id, salesManagerId: null, headOfSalesId: null };
+    if (type === "manager" && id) return { salesPersonId: null, salesManagerId: id, headOfSalesId: null };
+    if (type === "head" && id) return { salesPersonId: null, salesManagerId: null, headOfSalesId: id };
+  }
+
+  const legacyPersonId = body.salesPersonId ? String(body.salesPersonId) : null;
+  return {
+    salesPersonId: legacyPersonId,
+    salesManagerId: null,
+    headOfSalesId: null,
+  };
+}
+
+function resolveAssigneeKey(row: {
+  salesPersonId: string | null;
+  salesManagerId: string | null;
+  headOfSalesId: string | null;
+}) {
+  if (row.salesPersonId) return `person:${row.salesPersonId}`;
+  if (row.salesManagerId) return `manager:${row.salesManagerId}`;
+  if (row.headOfSalesId) return `head:${row.headOfSalesId}`;
+  return "";
+}
+
+function resolveAssigneeName(row: {
+  salesPerson?: { name: string } | null;
+  salesManager?: { name: string } | null;
+  headOfSales?: { name: string } | null;
+}) {
+  return row.salesPerson?.name ?? row.salesManager?.name ?? row.headOfSales?.name ?? null;
+}
+
+function resolveAssigneeType(row: {
+  salesPersonId: string | null;
+  salesManagerId: string | null;
+  headOfSalesId: string | null;
+}): "person" | "manager" | "head" | null {
+  if (row.salesPersonId) return "person";
+  if (row.salesManagerId) return "manager";
+  if (row.headOfSalesId) return "head";
+  return null;
 }
 
 function parseAdditionalContacts(body: Record<string, unknown>) {
@@ -101,35 +187,58 @@ function parseAdditionalContacts(body: Record<string, unknown>) {
     .filter((item): item is Record<string, unknown> => item != null && typeof item === "object")
     .map((item) => ({
       contact: String(item.contact ?? ""),
+      designation: String(item.designation ?? ""),
       email: String(item.email ?? ""),
       phone: String(item.phone ?? ""),
     }))
-    .filter((item) => item.contact.trim() || item.email.trim() || item.phone.trim());
+    .filter(
+      (item) =>
+        item.contact.trim() || item.designation.trim() || item.email.trim() || item.phone.trim()
+    );
 }
 
 function mapCustomer(row: {
   id: string;
   name: string;
   contact: string;
+  contactDesignation: string;
   email: string;
   phone: string;
   address: string;
-  status: (typeof CUSTOMER_STATUSES)[number];
+  status: string;
+  activityStatus: string;
   salesPersonId: string | null;
+  salesManagerId: string | null;
+  headOfSalesId: string | null;
   createdAt: Date;
   salesPerson?: { name: string } | null;
-  additionalContacts: { id: string; contact: string; email: string; phone: string }[];
+  salesManager?: { name: string } | null;
+  headOfSales?: { name: string } | null;
+  additionalContacts: {
+    id: string;
+    contact: string;
+    designation: string;
+    email: string;
+    phone: string;
+  }[];
 }) {
+  const normalized = normalizeStoredCustomerStatus(row.status, row.activityStatus);
+  const assigneeType = resolveAssigneeType(row);
+  const assigneeKey = resolveAssigneeKey(row);
   return {
     id: row.id,
     name: row.name,
     contact: row.contact,
+    contactDesignation: row.contactDesignation,
     email: row.email,
     phone: row.phone,
     address: row.address,
-    status: row.status,
+    lifecycleStatus: normalized.lifecycleStatus,
+    activityStatus: normalized.activityStatus,
+    assigneeType,
+    assigneeId: assigneeKey ? assigneeKey.split(":")[1] ?? null : null,
     salesPersonId: row.salesPersonId,
-    salesPersonName: row.salesPerson?.name ?? null,
+    salesPersonName: resolveAssigneeName(row),
     createdAt: row.createdAt.toISOString(),
     additionalContacts: row.additionalContacts.map(mapCustomerContact),
   };
@@ -137,14 +246,20 @@ function mapCustomer(row: {
 
 function customerDataFromBody(body: Record<string, unknown>) {
   const additionalContacts = parseAdditionalContacts(body);
+  const lifecycleStatus = parseLifecycleStatus(body.lifecycleStatus ?? body.status);
+  const activityStatus = parseActivityStatus(body.activityStatus);
+  const assignee = parseAssignee(body);
+
   return {
     name: String(body.name ?? ""),
     contact: String(body.contact ?? ""),
+    contactDesignation: String(body.contactDesignation ?? ""),
     email: String(body.email ?? ""),
     phone: String(body.phone ?? ""),
     address: String(body.address ?? ""),
-    status: parseCustomerStatus(body.status),
-    salesPersonId: body.salesPersonId ? String(body.salesPersonId) : null,
+    status: lifecycleStatus,
+    activityStatus,
+    ...assignee,
     additionalContacts,
   };
 }
@@ -165,11 +280,15 @@ export async function customers(req: ApiRequest, res: ApiResponse) {
       data: {
         name: data.name,
         contact: data.contact,
+        contactDesignation: data.contactDesignation,
         email: data.email,
         phone: data.phone,
         address: data.address,
         status: data.status,
+        activityStatus: data.activityStatus,
         salesPersonId: data.salesPersonId,
+        salesManagerId: data.salesManagerId,
+        headOfSalesId: data.headOfSalesId,
         additionalContacts: data.additionalContacts.length
           ? { create: data.additionalContacts }
           : undefined,
@@ -197,11 +316,15 @@ export async function updateCustomer(req: ApiRequest, res: ApiResponse, id: stri
       data: {
         name: data.name,
         contact: data.contact,
+        contactDesignation: data.contactDesignation,
         email: data.email,
         phone: data.phone,
         address: data.address,
         status: data.status,
+        activityStatus: data.activityStatus,
         salesPersonId: data.salesPersonId,
+        salesManagerId: data.salesManagerId,
+        headOfSalesId: data.headOfSalesId,
         additionalContacts: data.additionalContacts.length
           ? { create: data.additionalContacts }
           : undefined,

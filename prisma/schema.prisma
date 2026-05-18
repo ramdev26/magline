@@ -26,6 +26,11 @@ enum CustomerStatus {
   INACTIVE
 }
 
+enum CustomerActivityStatus {
+  ACTIVE
+  INACTIVE
+}
+
 enum SalesDesignation {
   ASSISTANT_SALES_MANAGER
   SENIOR_SALES_EXECUTIVE
@@ -83,30 +88,37 @@ model User {
 }
 
 model Customer {
-  id                  String            @id @default(cuid())
+  id                  String                 @id @default(cuid())
   name                String
   contact             String
+  contactDesignation  String                 @default("")
   email               String
   phone               String
   address             String
-  status              CustomerStatus    @default(NEW)
+  status              CustomerStatus         @default(NEW)
+  activityStatus      CustomerActivityStatus @default(ACTIVE)
   salesPersonId       String?
-  salesPerson         SalesPerson?      @relation(fields: [salesPersonId], references: [id], onDelete: SetNull)
-  createdAt           DateTime          @default(now())
-  updatedAt           DateTime          @updatedAt
+  salesManagerId      String?
+  headOfSalesId       String?
+  salesPerson         SalesPerson?           @relation(fields: [salesPersonId], references: [id], onDelete: SetNull)
+  salesManager        SalesManager?          @relation(fields: [salesManagerId], references: [id], onDelete: SetNull)
+  headOfSales         HeadOfSales?           @relation(fields: [headOfSalesId], references: [id], onDelete: SetNull)
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
   inquiries           Inquiry[]
   additionalContacts  CustomerContact[]
   workInProgress      WorkInProgress[]
 }
 
 model CustomerContact {
-  id         String   @id @default(cuid())
-  customerId String
-  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  contact    String   @default("")
-  email      String   @default("")
-  phone      String   @default("")
-  createdAt  DateTime @default(now())
+  id          String   @id @default(cuid())
+  customerId  String
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  contact     String   @default("")
+  designation String   @default("")
+  email       String   @default("")
+  phone       String   @default("")
+  createdAt   DateTime @default(now())
 }
 
 model HeadOfSales {
@@ -115,6 +127,7 @@ model HeadOfSales {
   department    String         @default("")
   createdAt     DateTime       @default(now())
   salesManagers SalesManager[]
+  customers     Customer[]
 }
 
 model SalesManager {
@@ -129,6 +142,7 @@ model SalesManager {
   headOfSales       HeadOfSales?           @relation(fields: [headOfSalesId], references: [id], onDelete: SetNull)
   createdAt         DateTime               @default(now())
   salesPersons      SalesPerson[]
+  customers         Customer[]
 }
 
 model SalesPerson {
